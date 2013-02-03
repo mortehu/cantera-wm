@@ -1,0 +1,14 @@
+*.cache
+*.log
+*.o
+*.status
+.*.sw?
+.deps
+Makefile
+Makefile.in
+aclocal.m4
+cantera-wm
+configure
+depcomp
+install-sh
+missing

@@ -17,6 +17,7 @@
 #include <X11/extensions/Xrender.h>
 
 #include "cantera-wm.h"
+#include "tree.h"
 
 namespace
 {
@@ -38,6 +39,8 @@ namespace
   int (*x_default_error_handler)(Display *, XErrorEvent *error);
 
   session current_session;
+
+  struct tree* config;
 }
 
 namespace xa
@@ -543,8 +546,18 @@ x_process_events (void)
 int
 main (int argc, char **argv)
 {
+  char *home;
+
+  if (!(home = getenv ("HOME")))
+    errx (EXIT_FAILURE, "Missing HOME environment variable");
+
   signal (SIGPIPE, SIG_IGN);
   signal (SIGALRM, SIG_IGN);
+
+  if (-1 == chdir (home))
+    err (EXIT_FAILURE, "Unable to chdir to '%s'", home);
+
+  config = tree_load_cfg (".cantera/config");
 
   x_connect ();
 

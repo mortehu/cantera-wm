@@ -373,6 +373,8 @@ x_process_events (void)
                 }
 
               w->show ();
+
+              XMapWindow (x_display, w->x_window);
             }
 
           break;
@@ -654,8 +656,16 @@ window::show ()
   XConfigureWindow (x_display, x_window,
                     CWX | CWY | CWWidth | CWHeight,
                     &wc);
+}
 
-  XMapWindow (x_display, x_window);
+void
+window::hide ()
+{
+  XWindowChanges wc;
+
+  wc.x = current_session.desktop_geometry.x + current_session.desktop_geometry.width;
+
+  XConfigureWindow (x_display, x_window, CWX, &wc);
 }
 
 screen::screen ()

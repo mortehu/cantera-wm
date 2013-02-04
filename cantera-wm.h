@@ -68,6 +68,7 @@ struct window
   void reset_composite ();
 
   void show ();
+  void hide ();
 
 private:
   window (const window &rhs);

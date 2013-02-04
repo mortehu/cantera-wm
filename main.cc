@@ -348,7 +348,7 @@ x_process_events (void)
               if (!ws)
                 {
                   if (!scr)
-                    scr = &current_session.screens[0]; /* XXX: Use the current screen instead */
+                    scr = &current_session.screens[current_session.active_screen];
 
                   ws = &scr->workspaces[scr->active_workspace];
 
@@ -661,6 +661,11 @@ window::show ()
 screen::screen ()
   : x_damage_region (0),
     active_workspace (0)
+{
+}
+
+session::session ()
+  : active_screen (0)
 {
 }
 

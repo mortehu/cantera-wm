@@ -96,9 +96,13 @@ struct screen
 
 struct session
 {
+  session();
+
   struct rect desktop_geometry;
 
   std::vector<screen> screens;
+  unsigned int active_screen;
+
   std::vector<window *> unpositioned_windows;
 
   std::set<Window> internal_x_windows;

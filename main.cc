@@ -236,10 +236,14 @@ x_process_create_notify (const XCreateWindowEvent &cwe)
   if (current_session.internal_x_windows.count (cwe.window))
     return;
 
-  new_window = new window;
-
   if (cwe.override_redirect)
-    new_window->flags |= window_flag_unmanaged;
+    {
+      XCompositeUnredirectWindow (x_display, cwe.window, CompositeRedirectManual);
+
+      return;
+    }
+
+  new_window = new window;
 
   new_window->x_window = cwe.window;
   new_window->position.x = cwe.x;
@@ -380,7 +384,6 @@ x_process_events (void)
                   current_session.move_window (w, scr, ws);
                 }
 
-              if (!(w->flags & window_flag_unmanaged))
                 {
                   w->get_hints ();
 

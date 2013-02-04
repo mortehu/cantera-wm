@@ -5,13 +5,6 @@
 #include <set>
 #include <vector>
 
-enum window_flags
-{
-  window_flag_is_mapped =      0x0001,
-  window_flag_want_unmapped =  0x0002,
-  window_flag_dirty =          0x0004,
-  window_flag_unmanaged =      0x0008
-};
 
 enum window_type
 {
@@ -46,8 +39,6 @@ struct window
   Window x_transient_for;
 
   struct rect position;
-
-  unsigned int flags;
 
   void get_hints ();
   void constrain_size ();

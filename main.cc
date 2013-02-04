@@ -202,7 +202,7 @@ x_connect (void)
   memset (&pa, 0, sizeof (pa));
   pa.subwindow_mode = IncludeInferiors;
 
-  XCompositeRedirectSubwindows (x_display, x_root_window, CompositeRedirectManual);
+  XCompositeRedirectSubwindows (x_display, x_root_window, CompositeRedirectAutomatic);
 
   for (auto &screen : current_session.screens)
     {
@@ -221,7 +221,7 @@ x_connect (void)
 
       current_session.internal_x_windows.insert (screen.x_window);
 
-      XCompositeUnredirectWindow (x_display, screen.x_window, CompositeRedirectManual);
+      XCompositeUnredirectWindow (x_display, screen.x_window, CompositeRedirectAutomatic);
 
       XMapWindow (x_display, screen.x_window);
 
@@ -253,7 +253,7 @@ x_process_create_notify (const XCreateWindowEvent &cwe)
 
   if (cwe.override_redirect)
     {
-      XCompositeUnredirectWindow (x_display, cwe.window, CompositeRedirectManual);
+      XCompositeUnredirectWindow (x_display, cwe.window, CompositeRedirectAutomatic);
 
       return;
     }
@@ -267,51 +267,6 @@ x_process_create_notify (const XCreateWindowEvent &cwe)
   new_window->position.height = cwe.height;
 
   current_session.unpositioned_windows.push_back (new_window);
-}
-
-void
-x_paint_dirty_windows (void)
-{
-  for (auto &screen : current_session.screens)
-    {
-      if (!screen.x_damage_region)
-        continue;
-
-      XFixesSetPictureClipRegion (x_display, screen.x_buffer, 0, 0, screen.x_damage_region);
-
-      for (auto &workspace : screen.workspaces)
-        {
-          for (auto &window : workspace)
-            {
-              if (!window->x_picture)
-                continue;
-
-              XRenderComposite (x_display,
-                                PictOpSrc,
-                                window->x_picture,
-                                None,
-                                screen.x_buffer,
-                                0, 0,
-                                0, 0,
-                                window->position.x - screen.geometry.x,
-                                window->position.y - screen.geometry.y,
-                                window->position.width, window->position.height);
-            }
-        }
-
-      XRenderComposite (x_display,
-                        PictOpSrc,
-                        screen.x_buffer,
-                        None,
-                        screen.x_picture,
-                        0, 0,
-                        0, 0,
-                        0, 0,
-                        screen.geometry.width, screen.geometry.height);
-
-      XFixesDestroyRegion (x_display, screen.x_damage_region);
-      screen.x_damage_region = 0;
-    }
 }
 
 static void
@@ -525,36 +480,7 @@ x_process_events (void)
             }
 
           break;
-
-        default:
-
-          if (event.type == x_damage_eventbase + XDamageNotify)
-            {
-              const XDamageNotifyEvent& dne = *(XDamageNotifyEvent *) &event;
-              screen *scr;
-              window *w;
-
-              if (NULL != (w = current_session.find_x_window (dne.drawable, NULL, &scr)))
-                {
-                  if (scr)
-                    {
-                      if (!scr->x_damage_region)
-                        scr->x_damage_region = XFixesCreateRegion (x_display, 0, 0);
-
-                      XDamageSubtract (x_display, dne.damage, None, scr->x_damage_region);
-                    }
-                }
-              else
-                {
-                  fprintf (stderr, "Drawable %08lx unrecognized!\n", dne.drawable);
-
-                  XDamageSubtract (x_display, dne.damage, None, None);
-                }
-            }
         }
-
-      if (!XPending (x_display))
-        x_paint_dirty_windows ();
     }
 }
 

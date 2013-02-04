@@ -817,4 +817,10 @@ found:;
     }
 
   ws->push_back (w);
+
+  XReparentWindow (x_display,
+                   w->x_window,
+                   scr->x_window,
+                   w->position.x - scr->geometry.x,
+                   w->position.y - scr->geometry.y);
 }

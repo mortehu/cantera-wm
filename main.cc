@@ -40,6 +40,10 @@ using namespace cantera_wm;
 
 namespace
 {
+  bool ctrl_pressed;
+  bool mod1_pressed;
+  bool super_pressed;
+  bool shift_pressed;
 
   int (*x_default_error_handler)(Display *, XErrorEvent *error);
 
@@ -82,6 +86,43 @@ static int
 x_error_discarder (Display *display, XErrorEvent *error)
 {
   return 0;
+}
+
+static void
+x_grab_keys (Window x_window)
+{
+  static const int global_modifiers[] = { 0, LockMask, LockMask | Mod2Mask, Mod2Mask };
+  size_t i, f, gmod;
+
+  XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Alt_L), Mod4Mask, x_window, False, GrabModeAsync, GrabModeAsync);
+  XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Alt_R), Mod4Mask, x_window, False, GrabModeAsync, GrabModeAsync);
+
+  XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Super_L), AnyModifier, x_window, False, GrabModeAsync, GrabModeAsync);
+  XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Super_R), AnyModifier, x_window, False, GrabModeAsync, GrabModeAsync);
+
+  for (i = 0; i < sizeof (global_modifiers) / sizeof (global_modifiers[0]); ++i)
+    {
+      gmod = global_modifiers[i];
+
+      for (f = 0; f < 9; ++f)
+        XGrabKey (x_display, XKeysymToKeycode (x_display, XK_1 + f), Mod4Mask, x_window, False, GrabModeAsync, GrabModeAsync);
+
+      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Left), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
+      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Right), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
+      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Up), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
+      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Down), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
+
+      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_q), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
+
+      for (f = 0; f < 12; ++f)
+        {
+          XGrabKey (x_display, XKeysymToKeycode (x_display, XK_F1 + f), ControlMask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
+          XGrabKey (x_display, XKeysymToKeycode (x_display, XK_F1 + f), Mod4Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
+        }
+
+      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Escape), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
+      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_F4), Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
+    }
 }
 
 static void
@@ -245,8 +286,12 @@ x_connect (void)
 
       fprintf (stderr, "Screen has window %08lx has buffer %08lx\n",
                screen.x_window, screen.x_buffer);
+
+      /* Only the first screen window gets key events */
+      window_attr.event_mask &= ~(KeyPressMask | KeyReleaseMask);
     }
 
+  x_grab_keys (current_session.screens[0].x_window);
 
   fprintf (stderr, "Root has window %08lx\n", x_root_window);
 }
@@ -277,6 +322,47 @@ x_process_create_notify (const XCreateWindowEvent &cwe)
   current_session.unpositioned_windows.push_back (new_window);
 }
 
+static pid_t
+launch_program (const char* command, Time when)
+{
+  char *args[4];
+  char buf[32];
+  pid_t pid;
+
+  sprintf (buf, "%d", current_session.active_screen);
+  setenv ("CURRENT_SCREEN", buf, 1);
+
+  args[0] = (char *) "/bin/sh";
+  args[1] = (char *) "-c";
+  asprintf(&args[2], "exec %s", command);
+  args[3] = (char *) NULL;
+
+  /* Can't use vfork() because we want to call setsid */
+
+  if (-1 == (pid = fork ()))
+    return -1;
+
+  if (pid)
+    return pid;
+
+  setsid ();
+
+#if 0
+  sprintf (buf, "%llu", (unsigned long long int) when);
+  setenv ("DESKTOP_STARTUP_ID", buf, 1);
+
+  sprintf (buf, ".cantera/bash-history-%02d", current_screen->active_terminal);
+  setenv ("HISTFILE", buf, 1);
+
+  sprintf (buf, ".cantera/session-%02d", current_screen->active_terminal);
+  setenv ("SESSION_PATH", buf, 1);
+#endif
+
+  execve (args[0], args, environ);
+
+  exit (EXIT_FAILURE);
+}
+
 static void
 x_process_events (void)
 {
@@ -290,47 +376,131 @@ x_process_events (void)
 
           if (!XFilterEvent (&event, event.xkey.window))
             {
+              screen *scr;
+
               wchar_t text[32];
               Status status;
               KeySym key_sym;
               int len;
 
+              ctrl_pressed = (event.xkey.state & ControlMask);
+              mod1_pressed = (event.xkey.state & Mod1Mask);
+              super_pressed = (event.xkey.state & Mod4Mask);
+              shift_pressed = (event.xkey.state & ShiftMask);
+
               len = XwcLookupString (x_ic, &event.xkey, text, sizeof (text) / sizeof (text[0]) - 1, &key_sym, &status);
               text[len] = 0;
 
-              switch (key_sym)
+              /* From experience, event.xkey.state is not enough.  Why? */
+              if (key_sym == XK_Control_L || key_sym == XK_Control_R)
+                ctrl_pressed = true;
+              else if (key_sym == XK_Super_L || key_sym == XK_Super_R)
+                super_pressed = true;
+              else if (key_sym == XK_Alt_L || key_sym == XK_Alt_R)
+                mod1_pressed = true;
+
+              scr = &current_session.screens[current_session.active_screen];
+
+              if ((key_sym == XK_q || key_sym == XK_Q) && (ctrl_pressed && mod1_pressed))
+                exit (EXIT_SUCCESS);
+
+              if (key_sym >= 'a' && key_sym <= 'z' && super_pressed)
                 {
-                case XK_Home:
+                  char key[10];
+                  const char* command;
 
+                  sprintf (key, "hotkey.%c", (int) key_sym);
+
+                  if (NULL != (command = tree_get_string_default (config, key, NULL)))
+                    launch_program (command, event.xkey.time);
+                }
+              else if ((super_pressed ^ ctrl_pressed) && key_sym >= XK_F1 && key_sym <= XK_F12)
+                {
+                  unsigned int new_active_workspace;
+
+                  new_active_workspace = key_sym - XK_F1;
+
+                  if (super_pressed)
+                    new_active_workspace += 12;
+
+                  if (new_active_workspace != scr->active_workspace)
                     {
-                      pid_t child;
+                      Window focus_window = scr->x_window;
 
-                      if (!(child = fork ()))
+                      for (auto window : scr->workspaces[new_active_workspace])
                         {
-                          char *args[2];
+                          window->show ();
 
-                          args[0] = (char *) "/usr/local/bin/cantera-term";
-                          args[1] = NULL;
-
-                          execve (args[0], args, environ);
-
-                          exit (EXIT_FAILURE);
+                          focus_window = window->x_window;
                         }
+
+                      for (auto window : scr->workspaces[scr->active_workspace])
+                        window->hide ();
+
+                      scr->active_workspace = new_active_workspace;
+
+                      /* XXX: Check with ICCCM what the other parameters should be */
+                      XSetInputFocus (x_display, focus_window, RevertToPointerRoot, event.xkey.time);
+
+                      /* XXX: Clear navigation stack when implemented */
                     }
+                }
+              else
+                {
+                  switch (key_sym)
+                    {
+                    case XK_Home:
 
-                  break;
+                        {
+                          pid_t child;
 
-                case XK_Escape:
+                          if (!(child = fork ()))
+                            {
+                              char *args[2];
 
-                  exit (0);
+                              args[0] = (char *) "/usr/local/bin/cantera-term";
+                              args[1] = NULL;
 
-                  break;
+                              execve (args[0], args, environ);
+
+                              exit (EXIT_FAILURE);
+                            }
+                        }
+
+                      break;
+                    }
                 }
             }
 
           break;
 
+        case KeyRelease:
+
+          {
+            KeySym key_sym;
+
+            key_sym = XLookupKeysym (&event.xkey, 0);
+
+            ctrl_pressed = (event.xkey.state & ControlMask);
+            mod1_pressed = (event.xkey.state & Mod1Mask);
+            super_pressed = (event.xkey.state & Mod4Mask);
+            shift_pressed = (event.xkey.state & ShiftMask);
+
+            if (key_sym == XK_Control_L || key_sym == XK_Control_R)
+              ctrl_pressed = false;
+            else if (key_sym == XK_Super_L || key_sym == XK_Super_R)
+              super_pressed = false;
+            else if (key_sym == XK_Alt_L || key_sym == XK_Alt_R)
+              mod1_pressed = false;
+          }
+
+          break;
+
         case CreateNotify:
+
+          fprintf (stderr, "Window created, parent %08lx (root = %08lx)\n",
+                   event.xcreatewindow.parent,
+                   x_root_window);
 
           x_process_create_notify (event.xcreatewindow);
 
@@ -349,21 +519,38 @@ x_process_events (void)
               workspace *ws;
               window *w;
 
+              bool give_focus = true;
+
               if (!(w = current_session.find_x_window (event.xmap.window, &ws, &scr)))
                 break;
 
-              if (!ws)
+              w->get_hints ();
+
+              if (!scr)
+                scr = &current_session.screens[current_session.active_screen];
+
+              if (w->type == window_type_desktop)
                 {
-                  if (!scr)
-                    scr = &current_session.screens[current_session.active_screen];
+                  /* XXX: Store as scr->desktop_window */
 
-                  ws = &scr->workspaces[scr->active_workspace];
+                  w->position = scr->geometry;
 
-                  current_session.move_window (w, scr, ws);
+                  XReparentWindow (x_display,
+                                   w->x_window,
+                                   scr->x_window,
+                                   w->position.x - scr->geometry.x,
+                                   w->position.y - scr->geometry.y);
+
+                  give_focus = false;
                 }
-
+              else
                 {
-                  w->get_hints ();
+                  if (!ws)
+                    {
+                      ws = &scr->workspaces[scr->active_workspace];
+
+                      current_session.move_window (w, scr, ws);
+                    }
 
                   switch (w->type)
                     {
@@ -382,6 +569,12 @@ x_process_events (void)
               w->show ();
 
               XMapWindow (x_display, w->x_window);
+
+              if (give_focus)
+                {
+                  /* XXX: Check with ICCCM what the other parameters should be */
+                  XSetInputFocus (x_display, w->x_window, RevertToPointerRoot, CurrentTime);
+                }
             }
 
           break;

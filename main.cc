@@ -68,6 +68,13 @@ x_error_handler (Display *display, XErrorEvent *error)
   if (error->error_code == BadAccess && error->request_code == X_ChangeWindowAttributes)
     errx (EXIT_FAILURE, "Another window manager is already running");
 
+  if (error->error_code == BadWindow)
+    {
+      current_session.remove_x_window (error->resourceid);
+
+      return 0;
+    }
+
   return x_default_error_handler (display, error);
 }
 

@@ -71,7 +71,8 @@ x_error_handler (Display *display, XErrorEvent *error)
   return x_default_error_handler (display, error);
 }
 
-static int x_error_discarder (Display *display, XErrorEvent *error)
+static int
+x_error_discarder (Display *display, XErrorEvent *error)
 {
   return 0;
 }
@@ -239,8 +240,8 @@ x_connect (void)
                screen.x_window, screen.x_buffer);
     }
 
-  fprintf (stderr, "Root has window %08lx\n",
-           x_root_window);
+
+  fprintf (stderr, "Root has window %08lx\n", x_root_window);
 }
 
 static void
@@ -416,9 +417,7 @@ x_process_events (void)
                 }
 
               if (NULL != (w = current_session.find_x_window (event.xmap.window, &ws, &scr)))
-                {
-                  w->reset_composite ();
-                }
+                w->reset_composite ();
             }
 
           break;
@@ -765,7 +764,7 @@ session::remove_x_window (Window x_window)
 }
 
 void
-session::move_window (window *w, screen *scre, workspace *ws)
+session::move_window (window *w, screen *scr, workspace *ws)
 {
   /* XXX: Eliminate code duplication from remove_x_window */
 

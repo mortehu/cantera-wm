@@ -1,10 +1,29 @@
 #ifndef CANTERA_WM_H_
 #define CANTERA_WM_H_ 1
 
+#include <X11/Xatom.h>
+#include <X11/Xlib.h>
+#include <X11/Xproto.h>
+
 #include <memory>
 #include <set>
 #include <vector>
 
+namespace cantera_wm {
+
+extern Display *x_display;
+extern int x_screen_index;
+extern Screen* x_screen;
+extern Visual* x_visual;
+extern XRenderPictFormat* x_render_visual_format;
+extern XVisualInfo* x_visual_info;
+extern int x_visual_info_count;
+extern Window x_root_window;
+
+extern XIM x_im;
+extern XIC x_ic;
+extern int x_damage_eventbase;
+extern int x_damage_errorbase;
 
 enum window_type
 {
@@ -88,5 +107,7 @@ struct session
   void remove_x_window (Window x_window);
   void move_window (window *, screen *scre, workspace *ws);
 };
+
+} /* namespace cantera_wm */
 
 #endif /* !CANTERA_WM_H_ */

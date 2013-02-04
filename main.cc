@@ -19,7 +19,7 @@
 #include "cantera-wm.h"
 #include "tree.h"
 
-namespace
+namespace cantera_wm
 {
   Display *x_display;
   int x_screen_index;
@@ -32,9 +32,14 @@ namespace
 
   XIM x_im;
   XIC x_ic;
-
   int x_damage_eventbase;
   int x_damage_errorbase;
+}
+
+using namespace cantera_wm;
+
+namespace
+{
 
   int (*x_default_error_handler)(Display *, XErrorEvent *error);
 

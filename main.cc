@@ -145,9 +145,17 @@ x_connect (void)
         {
           screen new_screen;
 
-          new_screen.geometry = xinerama_screens[i];
+          new_screen.geometry.x = xinerama_screens[i].x_org;
+          new_screen.geometry.y = xinerama_screens[i].y_org;
+          new_screen.geometry.width = xinerama_screens[i].width;
+          new_screen.geometry.height = xinerama_screens[i].height;
 
           current_session.screens.push_back (new_screen);
+
+          if (!i)
+            current_session.desktop_geometry = new_screen.geometry;
+          else
+            current_session.desktop_geometry.union_rect (new_screen.geometry);
         }
 
       XFree (xinerama_screens);
@@ -159,12 +167,14 @@ x_connect (void)
 
       XGetWindowAttributes (x_display, x_root_window, &root_window_attr);
 
-      new_screen.geometry.x_org = 0;
-      new_screen.geometry.y_org = 0;
+      new_screen.geometry.x = 0;
+      new_screen.geometry.y = 0;
       new_screen.geometry.width = root_window_attr.width;
       new_screen.geometry.height = root_window_attr.height;
 
       current_session.screens.push_back (new_screen);
+
+      current_session.desktop_geometry = new_screen.geometry;
     }
 
   /*** Compositing ***/
@@ -200,7 +210,7 @@ x_connect (void)
 
       screen.x_window
         = XCreateWindow (x_display, x_root_window,
-                         screen.geometry.x_org, screen.geometry.y_org,
+                         screen.geometry.x, screen.geometry.y,
                          screen.geometry.width, screen.geometry.height,
                          0, /* Border */
                          x_visual_info->depth,
@@ -283,8 +293,8 @@ x_paint_dirty_windows (void)
                                 screen.x_buffer,
                                 0, 0,
                                 0, 0,
-                                window->position.x - screen.geometry.x_org,
-                                window->position.y - screen.geometry.y_org,
+                                window->position.x - screen.geometry.x,
+                                window->position.y - screen.geometry.y,
                                 window->position.width, window->position.height);
             }
         }
@@ -396,10 +406,7 @@ x_process_events (void)
                     {
                     case window_type_normal:
 
-                      w->position.x = scr->geometry.x_org;
-                      w->position.y = scr->geometry.y_org;
-                      w->position.width = scr->geometry.width;
-                      w->position.height = scr->geometry.height;
+                      w->position = scr->geometry;
 
                       break;
 
@@ -570,6 +577,22 @@ main (int argc, char **argv)
   x_connect ();
 
   x_process_events ();
+}
+
+void
+rect::union_rect (struct rect &other)
+{
+  if (x > other.x)
+    x = other.x;
+
+  if (y > other.y)
+    y = other.y;
+
+  if (x + width < other.x + other.width)
+    width = other.x - other.width - x;
+
+  if (y + height < other.y + other.width)
+    height = other.y - other.width - y;
 }
 
 window::window ()

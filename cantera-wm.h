@@ -42,6 +42,8 @@ struct rect
 {
   int x, y;
   unsigned int width, height;
+
+  void union_rect (struct rect &other);
 };
 
 struct window
@@ -86,14 +88,16 @@ struct screen
 
   XserverRegion x_damage_region;
 
-  XineramaScreenInfo geometry;
-  workspace workspaces[24];
+  struct rect geometry;
 
+  workspace workspaces[24];
   unsigned int active_workspace;
 };
 
 struct session
 {
+  struct rect desktop_geometry;
+
   std::vector<screen> screens;
   std::vector<window *> unpositioned_windows;
 

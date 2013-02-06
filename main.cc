@@ -69,17 +69,19 @@ namespace xa
 static int
 x_error_handler (Display *display, XErrorEvent *error)
 {
+  int result = 0;
+
   if (error->error_code == BadAccess && error->request_code == X_ChangeWindowAttributes)
     errx (EXIT_FAILURE, "Another window manager is already running");
 
   if (error->error_code == BadWindow)
-    {
-      current_session.remove_x_window (error->resourceid);
+    current_session.remove_x_window (error->resourceid);
+  else if (error->error_code == BadDamage)
+    fprintf (stderr, "BadDamage: %08lx\n", error->resourceid);
+  else
+    result = x_default_error_handler (display, error);
 
-      return 0;
-    }
-
-  return x_default_error_handler (display, error);
+  return result;
 }
 
 static int

@@ -293,6 +293,8 @@ x_connect (void)
       window_attr.event_mask &= ~(KeyPressMask | KeyReleaseMask);
     }
 
+  XSetInputFocus (x_display, current_session.screens[0].x_window, RevertToPointerRoot, CurrentTime);
+
   x_grab_keys (current_session.screens[0].x_window);
 
   fprintf (stderr, "Root has window %08lx\n", x_root_window);

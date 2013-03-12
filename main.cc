@@ -16,6 +16,7 @@
 #include <X11/extensions/Xrender.h>
 
 #include "cantera-wm.h"
+#include "menu.h"
 #include "tree.h"
 
 namespace cantera_wm
@@ -49,6 +50,8 @@ namespace
   int (*x_default_error_handler)(Display *, XErrorEvent *error);
 
   struct tree* config;
+
+  bool showing_menu;
 }
 
 namespace xa
@@ -106,7 +109,7 @@ x_grab_keys (Window x_window)
       gmod = global_modifiers[i];
 
       for (f = 0; f < 9; ++f)
-        XGrabKey (x_display, XKeysymToKeycode (x_display, XK_1 + f), Mod4Mask, x_window, False, GrabModeAsync, GrabModeAsync);
+        XGrabKey (x_display, XKeysymToKeycode (x_display, XK_1 + f), Mod4Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
 
       XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Left), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
       XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Right), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
@@ -114,6 +117,9 @@ x_grab_keys (Window x_window)
       XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Down), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
 
       XGrabKey (x_display, XKeysymToKeycode (x_display, XK_q), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
+      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_q), ControlMask | Mod4Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
+      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Q), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
+      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Q), ControlMask | Mod4Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
 
       for (f = 0; f < 12; ++f)
         {
@@ -292,9 +298,11 @@ x_connect (void)
       window_attr.event_mask &= ~(KeyPressMask | KeyReleaseMask);
     }
 
-  x_grab_keys (current_session.screens[0].x_window);
+  x_grab_keys (x_root_window);
 
   fprintf (stderr, "Root has window %08lx\n", x_root_window);
+
+  menu_init ();
 }
 
 static void
@@ -484,7 +492,7 @@ x_process_events (void)
 
                   if (new_active_workspace != scr->active_workspace)
                     {
-                      Window focus_window = scr->x_window;
+                      Window focus_window = x_root_window;
 
                       for (auto window : scr->workspaces[new_active_workspace])
                         {
@@ -503,6 +511,10 @@ x_process_events (void)
 
                       /* XXX: Clear navigation stack when implemented */
                     }
+                }
+              else if(super_pressed && (mod1_pressed ^ ctrl_pressed))
+                {
+                  showing_menu = true;
                 }
               else
                 {
@@ -553,6 +565,9 @@ x_process_events (void)
               super_pressed = false;
             else if (key_sym == XK_Alt_L || key_sym == XK_Alt_R)
               mod1_pressed = false;
+
+            if(!super_pressed || !(mod1_pressed ^ ctrl_pressed))
+              showing_menu = false;
           }
 
         current_session.repaint_all = true;
@@ -1058,7 +1073,7 @@ session::remove_x_window (Window x_window)
 
   if (i != unpositioned_windows.end ())
     {
-      fprintf (stderr, " -> st was unpositioned\n");
+      fprintf (stderr, " -> It was unpositioned\n");
       delete *i;
 
       unpositioned_windows.erase (i);

@@ -8,8 +8,9 @@ AC_PROG_CXX
 AC_PROG_INSTALL
 AC_PROG_MAKE_SET
 
-AC_CHECK_HEADER([X11/extensions/Xdamage.h], [], [AC_MSG_ERROR([libxdamage required (apt-get install libxdamage-dev)])])
-AC_CHECK_HEADER([X11/extensions/Xrender.h], [], [AC_MSG_ERROR([libxrender required (apt-get install libxrender-dev)])])
-AC_CHECK_HEADER([X11/extensions/Xinerama.h], [], [AC_MSG_ERROR([libxinerama required (apt-get install libxinerama-dev)])])
+PKG_CHECK_MODULES([PACKAGES], [x11 xcomposite xdamage xfixes xinerama xrender])
+
+AC_SUBST(PACKAGES_CFLAGS)
+AC_SUBST(PACKAGES_LIBS)
 
 AC_OUTPUT(Makefile)

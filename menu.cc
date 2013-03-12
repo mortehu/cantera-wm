@@ -101,10 +101,10 @@ menu_init (void)
 void
 menu_thumbnail_dimensions (const screen& scr, unsigned int* width, unsigned int* height, unsigned int* margin)
 {
-  unsigned int tmp_margin = 10;
-  unsigned int tmp_width;
+  unsigned int tmp_margin, tmp_width;
 
-  tmp_width = (scr.geometry.width - tmp_margin * 17) / 12;
+  tmp_width = scr.geometry.width / 14;
+  tmp_margin = (scr.geometry.width - tmp_width * 12) / 17;
 
   if (width)
     *width = tmp_width;

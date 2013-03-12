@@ -24,16 +24,6 @@
 #include "menu.h"
 
 #define RESIZE_BUFFERS 3
-
-unsigned int palette[] =
-{
-  /* ANSI colors */
-  0xff000000, 0xff1818c2, 0xff18c218, 0xff18c2c2,
-  0xffc21818, 0xffc218c2, 0xffc2c218, 0xffc2c2c2,
-  0xff686868, 0xff7474ff, 0xff54ff54, 0xff54ffff,
-  0xffff5454, 0xffff54ff, 0xffffff54, 0xffffffff,
-};
-static XRenderColor xrpalette[16];
 static Picture resize_buffers[RESIZE_BUFFERS];
 
 using namespace cantera_wm;
@@ -69,14 +59,6 @@ menu_init (void)
       XRenderSetPictureFilter(x_display, resize_buffers[i], FilterBilinear, 0, 0);
 
       XFreePixmap(x_display, temp_pixmap);
-    }
-
-  for(i = 0; i < sizeof(palette) / sizeof(palette[0]); ++i)
-    {
-      xrpalette[i].alpha = ((palette[i] & 0xff000000) >> 24) * 0x0101;
-      xrpalette[i].red = ((palette[i] & 0xff0000) >> 16) * 0x0101;
-      xrpalette[i].green = ((palette[i] & 0x00ff00) >> 8) * 0x0101;
-      xrpalette[i].blue = (palette[i] & 0x0000ff) * 0x0101;
     }
 }
 

@@ -80,6 +80,8 @@ x_error_handler (Display *display, XErrorEvent *error)
     current_session.remove_x_window (error->resourceid);
   else if (error->error_code == BadDamage)
     fprintf (stderr, "BadDamage: %08lx\n", error->resourceid);
+  else if (error->error_code == BadMatch)
+    fprintf (stderr, "BadMatch: %08lx\n", error->resourceid);
   else
     result = x_default_error_handler (display, error);
 

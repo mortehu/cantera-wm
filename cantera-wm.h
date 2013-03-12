@@ -99,6 +99,9 @@ struct screen
 
   workspace workspaces[24];
   unsigned int active_workspace;
+
+  std::vector<Picture> resize_buffers;
+  XTransform initial_transform;
 };
 
 struct session

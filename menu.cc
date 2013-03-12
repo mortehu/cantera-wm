@@ -23,12 +23,21 @@
 #include "cantera-wm.h"
 #include "menu.h"
 
-#define RESIZE_BUFFERS 3
-static Picture resize_buffers[RESIZE_BUFFERS];
-
 using namespace cantera_wm;
 #define SMALL 0
 static const int yskips[] = { 10, 15 };
+
+static const XTransform xform_identity =
+{
+    {
+        { 0x10000, 0, 0 },
+        { 0, 0x10000, 0 },
+        { 0, 0, 0x10000 }
+    }
+};
+
+void
+menu_thumbnail_dimensions (const screen& scr, unsigned int* width, unsigned int* height, unsigned int* margin);
 
 void
 menu_draw_desktops (const struct screen& scr);
@@ -36,37 +45,64 @@ menu_draw_desktops (const struct screen& scr);
 void
 menu_init (void)
 {
-  size_t i;
-  size_t max_width = 0, max_height = 0;
-
   for (auto &screen : current_session.screens)
     {
-      if (screen.geometry.width > max_width)
-        max_width = screen.geometry.width;
+      unsigned int previous_width, previous_height;
+      unsigned int current_width, current_height;
+      unsigned int thumb_width, thumb_height;
+      XTransform xform_scaled;
+      Picture temp_picture;
 
-      if (screen.geometry.height > max_height)
-        max_height = screen.geometry.height;
-    }
+      menu_thumbnail_dimensions (screen, &thumb_width, &thumb_height, NULL);
 
-  for (i = 0; i < RESIZE_BUFFERS; ++i)
-    {
-      Pixmap temp_pixmap;
+      previous_width = screen.geometry.width;
+      previous_height = screen.geometry.height;
 
-      temp_pixmap = XCreatePixmap(x_display, x_root_window, max_width >> (i + 1), max_height >> (i + 1), 32);
+      for (;;)
+        {
+          Pixmap temp_pixmap;
 
-      resize_buffers[i] = XRenderCreatePicture(x_display, temp_pixmap, XRenderFindStandardFormat(x_display, PictStandardARGB32), 0, 0);
+          current_width = previous_width >> 1;
+          current_height = previous_height >> 1;
 
-      XRenderSetPictureFilter(x_display, resize_buffers[i], FilterBilinear, 0, 0);
+          if (current_width <= thumb_width)
+            current_width = thumb_width;
 
-      XFreePixmap(x_display, temp_pixmap);
+          if (current_height <= thumb_height)
+            current_height = thumb_height;
+
+          xform_scaled = xform_identity;
+          xform_scaled.matrix[2][2] = XDoubleToFixed((double) current_width / previous_width);
+
+          if (screen.resize_buffers.empty ())
+            screen.initial_transform = xform_scaled;
+          else
+            XRenderSetPictureTransform (x_display, temp_picture, &xform_scaled);
+
+          if (current_width == thumb_width)
+            break;
+
+          temp_pixmap = XCreatePixmap (x_display, x_root_window, current_width, current_height, 32);
+
+          temp_picture = XRenderCreatePicture (x_display, temp_pixmap, XRenderFindStandardFormat (x_display, PictStandardARGB32), 0, 0);
+
+          XRenderSetPictureFilter (x_display, temp_picture, FilterBilinear, 0, 0);
+
+          XFreePixmap (x_display, temp_pixmap);
+
+          screen.resize_buffers.push_back (temp_picture);
+
+          previous_width = current_width;
+          previous_height = current_height;
+        }
     }
 }
 
 void
-menu_thumbnail_dimensions (const screen& scr, int* width, int* height, int* margin)
+menu_thumbnail_dimensions (const screen& scr, unsigned int* width, unsigned int* height, unsigned int* margin)
 {
-  int tmp_margin = 10;
-  int tmp_width;
+  unsigned int tmp_margin = 10;
+  unsigned int tmp_width;
 
   tmp_width = (scr.geometry.width - tmp_margin * 17) / 12;
 
@@ -83,7 +119,7 @@ menu_thumbnail_dimensions (const screen& scr, int* width, int* height, int* marg
 void
 menu_draw (const struct screen& scr)
 {
-  int thumb_width, thumb_height, thumb_margin;
+  unsigned int thumb_width, thumb_height, thumb_margin;
 
   menu_thumbnail_dimensions(scr, &thumb_width, &thumb_height, &thumb_margin);
 
@@ -93,23 +129,13 @@ menu_draw (const struct screen& scr)
 void
 menu_draw_desktops (const struct screen& scr)
 {
-  int thumb_width, thumb_height, thumb_margin;
+  unsigned int thumb_width, thumb_height, thumb_margin;
   unsigned int i;
   int x = 0, y;
   time_t ttnow;
   struct tm* tmnow;
   wchar_t wbuf[256];
   char buf[256];
-
-  XTransform xform_scaled;
-  XTransform xform_identity =
-    {
-        {
-            { 0x10000, 0, 0 },
-            { 0, 0x10000, 0 },
-            { 0, 0, 0x10000 }
-        }
-    };
 
   menu_thumbnail_dimensions(scr, &thumb_width, &thumb_height, &thumb_margin);
 
@@ -126,6 +152,7 @@ menu_draw_desktops (const struct screen& scr)
   for(i = 0; i < 24; ++i)
     {
       XRenderColor border_color;
+      unsigned int buffer_width, buffer_height;
 
       x = thumb_margin + (i % 12) * (thumb_width + thumb_margin);
 
@@ -165,8 +192,6 @@ menu_draw_desktops (const struct screen& scr)
       XRenderFillRectangle(x_display, PictOpSrc, scr.x_buffer, &border_color, x - 1, y - 1, thumb_width + 2, 1);
       XRenderFillRectangle(x_display, PictOpSrc, scr.x_buffer, &border_color, x - 1, y + thumb_height, thumb_width + 2, 1);
 
-      xform_scaled = xform_identity;
-
       if (scr.workspaces[i].empty ())
         {
           XRenderColor fill_color;
@@ -190,26 +215,56 @@ menu_draw_desktops (const struct screen& scr)
         {
           int scaled_x, scaled_y, scaled_width, scaled_height;
 
-          scaled_x = w->position.x * thumb_width / scr.geometry.width;
-          scaled_width = w->position.width * thumb_width / scr.geometry.width;
+          scaled_x = w->position.x >> 1;
+          scaled_width = w->position.width >> 1;
 
-          scaled_y = w->position.y * thumb_width / scr.geometry.width;
-          scaled_height = w->position.height * thumb_width / scr.geometry.width;
+          scaled_y = w->position.y >> 1;
+          scaled_height = w->position.height >> 1;
 
-          xform_scaled.matrix[2][2] = XDoubleToFixed((double) thumb_width / scr.geometry.width);
-          XRenderSetPictureTransform (x_display, w->x_picture, &xform_scaled);
+          XRenderSetPictureTransform (x_display, w->x_picture, (XTransform *) &scr.initial_transform);
+          XRenderSetPictureFilter (x_display, w->x_picture, FilterBilinear, 0, 0);
 
           XRenderComposite (x_display,
                             PictOpSrc,
                             w->x_picture,
                             None,
-                            scr.x_buffer,
+                            scr.resize_buffers.front (),
                             0, 0,
                             0, 0,
-                            x + scaled_x, y + scaled_y,
+                            scaled_x, scaled_y,
                             scaled_width, scaled_height);
 
-          XRenderSetPictureTransform (x_display, w->x_picture, &xform_identity);
+          XRenderSetPictureTransform (x_display, w->x_picture, (XTransform *) &xform_identity);
+          XRenderSetPictureFilter (x_display, w->x_picture, FilterNearest, 0, 0);
         }
+
+      buffer_width = scr.geometry.width;
+      buffer_height = scr.geometry.height;
+
+      for (size_t i = 1; i < scr.resize_buffers.size (); ++i)
+        {
+          buffer_width >>= 1;
+          buffer_height >>= 1;
+
+          XRenderComposite (x_display,
+                            PictOpSrc,
+                            scr.resize_buffers[i - 1],
+                            None,
+                            scr.resize_buffers[i],
+                            0, 0,
+                            0, 0,
+                            0, 0,
+                            buffer_width, buffer_height);
+        }
+
+      XRenderComposite (x_display,
+                        PictOpSrc,
+                        scr.resize_buffers.back (),
+                        None,
+                        scr.x_buffer,
+                        0, 0,
+                        0, 0,
+                        x, y,
+                        thumb_width, thumb_height);
     }
 }

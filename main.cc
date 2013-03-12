@@ -770,7 +770,23 @@ x_process_events (void)
                       if (!scr->x_damage_region)
                         scr->x_damage_region = XFixesCreateRegion (x_display, 0, 0);
 
-                      XDamageSubtract (x_display, dne.damage, None, scr->x_damage_region);
+                      if (w->real_position.x || w->real_position.y)
+                        {
+                          XserverRegion tmp_region;
+
+                          tmp_region = XFixesCreateRegion(x_display, 0, 0);
+
+                          XDamageSubtract (x_display, dne.damage, None, tmp_region);
+
+                          XFixesTranslateRegion (x_display, tmp_region, w->real_position.x, w->real_position.y);
+
+                          XFixesUnionRegion (x_display, scr->x_damage_region,
+                                             scr->x_damage_region, tmp_region);
+
+                          XFixesDestroyRegion (x_display, tmp_region);
+                        }
+                      else
+                        XDamageSubtract (x_display, dne.damage, None, scr->x_damage_region);
                     }
                 }
               else

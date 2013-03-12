@@ -12,7 +12,6 @@
 #include <X11/Xproto.h>
 
 #include <X11/extensions/Xcomposite.h>
-#include <X11/extensions/Xdamage.h>
 #include <X11/extensions/Xinerama.h>
 #include <X11/extensions/Xrender.h>
 
@@ -34,6 +33,8 @@ namespace cantera_wm
   XIC x_ic;
   int x_damage_eventbase;
   int x_damage_errorbase;
+
+  session current_session;
 }
 
 using namespace cantera_wm;
@@ -46,8 +47,6 @@ namespace
   bool shift_pressed;
 
   int (*x_default_error_handler)(Display *, XErrorEvent *error);
-
-  session current_session;
 
   struct tree* config;
 }
@@ -233,13 +232,13 @@ x_connect (void)
   if (!XCompositeQueryExtension (x_display, &dummy, &dummy))
     errx (EXIT_FAILURE, "Missing XComposite extension");
 
-  if (!XDamageQueryExtension (x_display, &x_damage_eventbase, &x_damage_errorbase))
-    errx (EXIT_FAILURE, "Missing XDamage extension");
-
   XCompositeQueryVersion (x_display, &major, &minor);
 
   if (!(major > 0 || minor >= 2))
     errx (EXIT_FAILURE, "XComposite version %d.%d is too old.  1.2 or more required", major, minor);
+
+  if (!XDamageQueryExtension (x_display, &x_damage_eventbase, &x_damage_errorbase))
+    errx (EXIT_FAILURE, "Missing XDamage extension");
 
   /* Create one window for each screen in which to composite its contents */
 
@@ -253,7 +252,7 @@ x_connect (void)
   memset (&pa, 0, sizeof (pa));
   pa.subwindow_mode = IncludeInferiors;
 
-  XCompositeRedirectSubwindows (x_display, x_root_window, CompositeRedirectAutomatic);
+  XCompositeRedirectSubwindows (x_display, x_root_window, CompositeRedirectManual);
 
   for (auto &screen : current_session.screens)
     {
@@ -272,7 +271,7 @@ x_connect (void)
 
       current_session.internal_x_windows.insert (screen.x_window);
 
-      XCompositeUnredirectWindow (x_display, screen.x_window, CompositeRedirectAutomatic);
+      XCompositeUnredirectWindow (x_display, screen.x_window, CompositeRedirectManual);
 
       XMapWindow (x_display, screen.x_window);
 
@@ -308,7 +307,7 @@ x_process_create_notify (const XCreateWindowEvent &cwe)
 
   if (cwe.override_redirect)
     {
-      XCompositeUnredirectWindow (x_display, cwe.window, CompositeRedirectAutomatic);
+      XCompositeUnredirectWindow (x_display, cwe.window, CompositeRedirectManual);
 
       return;
     }
@@ -363,6 +362,64 @@ launch_program (const char* command, Time when)
   execve (args[0], args, environ);
 
   exit (EXIT_FAILURE);
+}
+
+static void
+x_paint_dirty_windows (void)
+{
+  for (auto &screen : current_session.screens)
+    {
+      XRenderColor black;
+
+      if (!screen.x_damage_region)
+        continue;
+
+      XFixesSetPictureClipRegion (x_display, screen.x_buffer, 0, 0, screen.x_damage_region);
+
+      black.red = 0x0000;
+      black.green = 0x0000;
+      black.blue = 0x0000;
+      black.alpha = 0xffff;
+
+      XRenderFillRectangle (x_display, PictOpSrc, screen.x_buffer, &black,
+                            0, 0, screen.geometry.width, screen.geometry.height);
+
+      for (auto &workspace : screen.workspaces)
+        {
+          for (auto &window : workspace)
+            {
+              if (!window->x_picture)
+                continue;
+
+              XRenderComposite (x_display,
+                                PictOpSrc,
+                                window->x_picture,
+                                None,
+                                screen.x_buffer,
+                                0, 0,
+                                0, 0,
+                                window->real_position.x - screen.geometry.x,
+                                window->real_position.y - screen.geometry.y,
+                                window->real_position.width, window->real_position.height);
+            }
+        }
+
+      if (showing_menu)
+        menu_draw (screen);
+
+      XRenderComposite (x_display,
+                        PictOpSrc,
+                        screen.x_buffer,
+                        None,
+                        screen.x_picture,
+                        0, 0,
+                        0, 0,
+                        0, 0,
+                        screen.geometry.width, screen.geometry.height);
+
+      XFixesDestroyRegion (x_display, screen.x_damage_region);
+      screen.x_damage_region = 0;
+    }
 }
 
 static void
@@ -474,6 +531,8 @@ x_process_events (void)
                 }
             }
 
+          current_session.repaint_all = true;
+
           break;
 
         case KeyRelease:
@@ -495,6 +554,8 @@ x_process_events (void)
             else if (key_sym == XK_Alt_L || key_sym == XK_Alt_R)
               mod1_pressed = false;
           }
+
+        current_session.repaint_all = true;
 
           break;
 
@@ -533,15 +594,9 @@ x_process_events (void)
 
               if (w->type == window_type_desktop)
                 {
-                  /* XXX: Store as scr->desktop_window */
+                  current_session.move_window (w, scr, NULL);
 
                   w->position = scr->geometry;
-
-                  XReparentWindow (x_display,
-                                   w->x_window,
-                                   scr->x_window,
-                                   w->position.x - scr->geometry.x,
-                                   w->position.y - scr->geometry.y);
 
                   give_focus = false;
                 }
@@ -628,13 +683,12 @@ x_process_events (void)
 
         case ConfigureNotify:
 
-          /* XXX: Do we ever get this event?  Maybe for override-redirect? */
           if (window *w = current_session.find_x_window (event.xconfigure.window))
             {
-              w->position.x = event.xconfigure.x;
-              w->position.y = event.xconfigure.y;
-              w->position.width = event.xconfigure.width;
-              w->position.height = event.xconfigure.height;
+              w->real_position.x = event.xconfigure.x;
+              w->real_position.y = event.xconfigure.y;
+              w->real_position.width = event.xconfigure.width;
+              w->real_position.height = event.xconfigure.height;
             }
 
           break;
@@ -683,7 +737,44 @@ x_process_events (void)
             }
 
           break;
+
+        default:
+
+          if (event.type == x_damage_eventbase + XDamageNotify)
+            {
+              const XDamageNotifyEvent& dne = *(XDamageNotifyEvent *) &event;
+              screen *scr;
+              window *w;
+
+              if (NULL != (w = current_session.find_x_window (dne.drawable, NULL, &scr)))
+                {
+                  if (scr)
+                    {
+                      if (!scr->x_damage_region)
+                        scr->x_damage_region = XFixesCreateRegion (x_display, 0, 0);
+
+                      XDamageSubtract (x_display, dne.damage, None, scr->x_damage_region);
+                    }
+                }
+              else
+                XDamageSubtract (x_display, dne.damage, None, None);
+            }
         }
+
+      if (current_session.repaint_all)
+        {
+          for (auto &scr : current_session.screens)
+            {
+              if (!scr.x_damage_region)
+                scr.x_damage_region = XFixesCreateRegion (x_display, &scr.geometry, 1);
+              else
+                XFixesSetRegion (x_display, scr.x_damage_region, &scr.geometry, 1);
+            }
+
+          current_session.repaint_all = false;
+        }
+
+      x_paint_dirty_windows ();
     }
 }
 
@@ -914,6 +1005,20 @@ session::find_x_window (Window x_window,
 
   for (auto &screen : screens)
     {
+      for (auto &window : screen.ancillary_windows)
+        {
+          if (window->x_window == x_window)
+            {
+              if (workspace_ret)
+                *workspace_ret = NULL;
+
+              if (screen_ret)
+                *screen_ret = &screen;
+
+              return window;
+            }
+        }
+
       for (auto &workspace : screen.workspaces)
         {
           for (auto &window : workspace)
@@ -940,6 +1045,8 @@ session::remove_x_window (Window x_window)
 {
   fprintf (stderr, "Window %08lx was destroyed\n", x_window);
 
+  current_session.repaint_all = true;
+
   auto predicate = [x_window](window *window) -> bool
     {
       return window->x_window == x_window;
@@ -961,6 +1068,20 @@ session::remove_x_window (Window x_window)
 
   for (auto &screen : screens)
     {
+      auto i = std::find_if (screen.ancillary_windows.begin (),
+                             screen.ancillary_windows.end (),
+                             predicate);
+
+      if (i != screen.ancillary_windows.end ())
+        {
+          fprintf (stderr, " -> It was an ancillary window\n");
+          delete *i;
+
+          screen.ancillary_windows.erase (i);
+
+          return;
+        }
+
       for (auto &workspace : screen.workspaces)
         {
           auto i = std::find_if (workspace.begin (),
@@ -995,34 +1116,44 @@ session::move_window (window *w, screen *scr, workspace *ws)
                          predicate);
 
   if (i != unpositioned_windows.end ())
-    unpositioned_windows.erase (i);
-  else
     {
-      for (auto &screen : screens)
-        {
-          for (auto &workspace : screen.workspaces)
-            {
-              auto i = std::find_if (workspace.begin (),
-                                     workspace.end (),
-                                     predicate);
+      unpositioned_windows.erase (i);
 
-              if (i != workspace.end ())
-                {
-                  workspace.erase (i);
-
-                  goto found;
-                }
-            }
-        }
-
-found:;
+      goto found;
     }
 
-  ws->push_back (w);
+  for (auto &screen : screens)
+    {
+      auto i = std::find_if (screen.ancillary_windows.begin (),
+                             screen.ancillary_windows.end (),
+                             predicate);
 
-  XReparentWindow (x_display,
-                   w->x_window,
-                   scr->x_window,
-                   w->position.x - scr->geometry.x,
-                   w->position.y - scr->geometry.y);
+      if (i != screen.ancillary_windows.end ())
+        {
+          screen.ancillary_windows.erase (i);
+
+          goto found;
+        }
+
+      for (auto &workspace : screen.workspaces)
+        {
+          auto i = std::find_if (workspace.begin (),
+                                 workspace.end (),
+                                 predicate);
+
+          if (i != workspace.end ())
+            {
+              workspace.erase (i);
+
+              goto found;
+            }
+        }
+    }
+
+found:
+
+  if (ws)
+    ws->push_back (w);
+  else
+    scr->ancillary_windows.push_back (w);
 }

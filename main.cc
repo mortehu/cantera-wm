@@ -83,7 +83,7 @@ x_error_handler (Display *display, XErrorEvent *error)
   else if (error->error_code == BadMatch)
     fprintf (stderr, "BadMatch: %08lx\n", error->resourceid);
   else
-    result = x_default_error_handler (display, error);
+    fprintf (stderr, "Error: %d\n", error->error_code);
 
   return result;
 }

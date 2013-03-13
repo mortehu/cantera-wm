@@ -381,16 +381,19 @@ x_paint_dirty_windows (void)
   for (auto &screen : current_session.screens)
     {
       XRenderColor black;
+      bool draw_menu;
 
-      if (!showing_menu)
+      draw_menu = showing_menu || screen.workspaces[screen.active_workspace].empty ();
+
+      if (draw_menu || current_session.repaint_all)
+        XFixesSetPictureClipRegion (x_display, screen.x_buffer, 0, 0, None);
+      else
         {
           if (!screen.x_damage_region)
             continue;
 
           XFixesSetPictureClipRegion (x_display, screen.x_buffer, 0, 0, screen.x_damage_region);
         }
-      else
-        XFixesSetPictureClipRegion (x_display, screen.x_buffer, 0, 0, None);
 
       black.red = 0x0000;
       black.green = 0x0000;
@@ -434,7 +437,7 @@ x_paint_dirty_windows (void)
                             window->real_position.width, window->real_position.height);
         }
 
-      if (showing_menu)
+      if (draw_menu)
         menu_draw (screen);
 
       XRenderComposite (x_display,
@@ -453,12 +456,18 @@ x_paint_dirty_windows (void)
           screen.x_damage_region = 0;
         }
     }
+
+  current_session.repaint_all = false;
 }
 
 static void
 x_process_events (void)
 {
   XEvent event;
+
+  current_session.repaint_all = true;
+
+  x_paint_dirty_windows ();
 
   while (0 == XNextEvent (x_display, &event))
     {
@@ -574,28 +583,28 @@ x_process_events (void)
 
         case KeyRelease:
 
-          {
-            KeySym key_sym;
+            {
+              KeySym key_sym;
 
-            key_sym = XLookupKeysym (&event.xkey, 0);
+              key_sym = XLookupKeysym (&event.xkey, 0);
 
-            ctrl_pressed = (event.xkey.state & ControlMask);
-            mod1_pressed = (event.xkey.state & Mod1Mask);
-            super_pressed = (event.xkey.state & Mod4Mask);
-            shift_pressed = (event.xkey.state & ShiftMask);
+              ctrl_pressed = (event.xkey.state & ControlMask);
+              mod1_pressed = (event.xkey.state & Mod1Mask);
+              super_pressed = (event.xkey.state & Mod4Mask);
+              shift_pressed = (event.xkey.state & ShiftMask);
 
-            if (key_sym == XK_Control_L || key_sym == XK_Control_R)
-              ctrl_pressed = false;
-            else if (key_sym == XK_Super_L || key_sym == XK_Super_R)
-              super_pressed = false;
-            else if (key_sym == XK_Alt_L || key_sym == XK_Alt_R)
-              mod1_pressed = false;
+              if (key_sym == XK_Control_L || key_sym == XK_Control_R)
+                ctrl_pressed = false;
+              else if (key_sym == XK_Super_L || key_sym == XK_Super_R)
+                super_pressed = false;
+              else if (key_sym == XK_Alt_L || key_sym == XK_Alt_R)
+                mod1_pressed = false;
 
-            if(!super_pressed || !(mod1_pressed ^ ctrl_pressed))
-              showing_menu = false;
-          }
+              if(!super_pressed || !(mod1_pressed ^ ctrl_pressed))
+                showing_menu = false;
+            }
 
-        current_session.repaint_all = true;
+          current_session.repaint_all = true;
 
           break;
 
@@ -822,18 +831,8 @@ x_process_events (void)
             }
         }
 
-      if (current_session.repaint_all)
-        {
-          for (auto &scr : current_session.screens)
-            {
-              if (!scr.x_damage_region)
-                scr.x_damage_region = XFixesCreateRegion (x_display, &scr.geometry, 1);
-              else
-                XFixesSetRegion (x_display, scr.x_damage_region, &scr.geometry, 1);
-            }
-
-          current_session.repaint_all = false;
-        }
+      if (XPending (x_display))
+        continue;
 
       x_paint_dirty_windows ();
     }

@@ -382,10 +382,15 @@ x_paint_dirty_windows (void)
     {
       XRenderColor black;
 
-      if (!screen.x_damage_region)
-        continue;
+      if (!showing_menu)
+        {
+          if (!screen.x_damage_region)
+            continue;
 
-      XFixesSetPictureClipRegion (x_display, screen.x_buffer, 0, 0, screen.x_damage_region);
+          XFixesSetPictureClipRegion (x_display, screen.x_buffer, 0, 0, screen.x_damage_region);
+        }
+      else
+        XFixesSetPictureClipRegion (x_display, screen.x_buffer, 0, 0, None);
 
       black.red = 0x0000;
       black.green = 0x0000;
@@ -395,24 +400,21 @@ x_paint_dirty_windows (void)
       XRenderFillRectangle (x_display, PictOpSrc, screen.x_buffer, &black,
                             0, 0, screen.geometry.width, screen.geometry.height);
 
-      for (auto &workspace : screen.workspaces)
+      for (auto &window : screen.workspaces[screen.active_workspace])
         {
-          for (auto &window : workspace)
-            {
-              if (!window->x_picture)
-                continue;
+          if (!window->x_picture)
+            continue;
 
-              XRenderComposite (x_display,
-                                PictOpSrc,
-                                window->x_picture,
-                                None,
-                                screen.x_buffer,
-                                0, 0,
-                                0, 0,
-                                window->real_position.x - screen.geometry.x,
-                                window->real_position.y - screen.geometry.y,
-                                window->real_position.width, window->real_position.height);
-            }
+          XRenderComposite (x_display,
+                            PictOpSrc,
+                            window->x_picture,
+                            None,
+                            screen.x_buffer,
+                            0, 0,
+                            0, 0,
+                            window->real_position.x - screen.geometry.x,
+                            window->real_position.y - screen.geometry.y,
+                            window->real_position.width, window->real_position.height);
         }
 
       for (auto &window : screen.ancillary_windows)
@@ -445,8 +447,11 @@ x_paint_dirty_windows (void)
                         0, 0,
                         screen.geometry.width, screen.geometry.height);
 
-      XFixesDestroyRegion (x_display, screen.x_damage_region);
-      screen.x_damage_region = 0;
+      if (screen.x_damage_region)
+        {
+          XFixesDestroyRegion (x_display, screen.x_damage_region);
+          screen.x_damage_region = 0;
+        }
     }
 }
 

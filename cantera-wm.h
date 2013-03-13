@@ -74,6 +74,8 @@ struct window
   void show ();
   void hide ();
 
+  bool override_redirect;
+
 private:
   window (const window &rhs);
   window& operator=(const window &rhs);

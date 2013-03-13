@@ -315,13 +315,6 @@ x_process_create_notify (const XCreateWindowEvent &cwe)
   if (current_session.internal_x_windows.count (cwe.window))
     return;
 
-  if (cwe.override_redirect)
-    {
-      XCompositeUnredirectWindow (x_display, cwe.window, CompositeRedirectManual);
-
-      return;
-    }
-
   new_window = new window;
 
   new_window->x_window = cwe.window;
@@ -329,6 +322,14 @@ x_process_create_notify (const XCreateWindowEvent &cwe)
   new_window->position.y = cwe.y;
   new_window->position.width = cwe.width;
   new_window->position.height = cwe.height;
+
+  new_window->real_position = new_window->position;
+
+  if (cwe.override_redirect)
+    {
+      XCompositeUnredirectWindow (x_display, cwe.window, CompositeRedirectManual);
+      new_window->override_redirect = true;
+    }
 
   current_session.unpositioned_windows.push_back (new_window);
 }
@@ -412,6 +413,23 @@ x_paint_dirty_windows (void)
                                 window->real_position.y - screen.geometry.y,
                                 window->real_position.width, window->real_position.height);
             }
+        }
+
+      for (auto &window : screen.ancillary_windows)
+        {
+          if (!window->x_picture)
+            continue;
+
+          XRenderComposite (x_display,
+                            PictOpSrc,
+                            window->x_picture,
+                            None,
+                            screen.x_buffer,
+                            0, 0,
+                            0, 0,
+                            window->real_position.x - screen.geometry.x,
+                            window->real_position.y - screen.geometry.y,
+                            window->real_position.width, window->real_position.height);
         }
 
       if (showing_menu)
@@ -578,7 +596,9 @@ x_process_events (void)
 
         case CreateNotify:
 
-          fprintf (stderr, "Window created, parent %08lx (root = %08lx)\n",
+          fprintf (stderr, "Window created (%d, %d, %d, %d), parent %08lx (root = %08lx)\n",
+                   event.xcreatewindow.x, event.xcreatewindow.y,
+                   event.xcreatewindow.width, event.xcreatewindow.height,
                    event.xcreatewindow.parent,
                    x_root_window);
 
@@ -682,6 +702,7 @@ x_process_events (void)
               window *w;
 
               fprintf (stderr, "Window %08lx was unmapped\n", destroy_event.xdestroywindow.window);
+              current_session.repaint_all = true;
 
               /* Window is probably destroyed, so we check that first */
               while (XCheckTypedWindowEvent (x_display,
@@ -699,6 +720,8 @@ x_process_events (void)
           break;
 
         case ConfigureNotify:
+
+          current_session.repaint_all = true;
 
           if (window *w = current_session.find_x_window (event.xconfigure.window))
             {
@@ -920,10 +943,6 @@ window::constrain_size ()
 void
 window::init_composite ()
 {
-  XWindowAttributes attr;
-  XRenderPictFormat *format;
-  XRenderPictureAttributes picture_attributes;
-
   if (x_picture)
     {
       assert (x_damage);
@@ -931,17 +950,25 @@ window::init_composite ()
       return;
     }
 
-  XGetWindowAttributes (x_display, x_window, &attr);
+  if (!override_redirect)
+    {
+      XWindowAttributes attr;
+      XRenderPictFormat *format;
+      XRenderPictureAttributes picture_attributes;
 
-  format = XRenderFindVisualFormat (x_display, attr.visual);
+      XGetWindowAttributes (x_display, x_window, &attr);
 
-  if (!format)
-    errx (EXIT_FAILURE, "Unable to find visual format for window");
+      format = XRenderFindVisualFormat (x_display, attr.visual);
 
-  memset (&picture_attributes, 0, sizeof (picture_attributes));
-  picture_attributes.subwindow_mode = IncludeInferiors;
+      if (!format)
+        errx (EXIT_FAILURE, "Unable to find visual format for window");
 
-  x_picture = XRenderCreatePicture (x_display, x_window, format, CPSubwindowMode, &picture_attributes);
+      memset (&picture_attributes, 0, sizeof (picture_attributes));
+      picture_attributes.subwindow_mode = IncludeInferiors;
+
+      x_picture = XRenderCreatePicture (x_display, x_window, format, CPSubwindowMode, &picture_attributes);
+    }
+
   x_damage = XDamageCreate (x_display, x_window, XDamageReportNonEmpty);
 
   fprintf (stderr, "Window %08lx has picture %08lx and damage %08lx\n",
@@ -951,21 +978,21 @@ window::init_composite ()
 void
 window::reset_composite ()
 {
-  if (!x_picture)
-    {
-      assert (!x_damage);
+  /* XXX: It seems these are always already destroyed? */
 
-      return;
+  if (x_damage)
+    {
+      XDamageDestroy (x_display, x_damage);
+
+      x_damage = 0;
     }
 
-  /* It seems these are always already destroyed */
+  if (x_picture)
+    {
+      XRenderFreePicture (x_display, x_picture);
 
-  fprintf (stderr, "Freeing picture %08lx\n", x_picture);
-  XDamageDestroy (x_display, x_damage);
-  XRenderFreePicture (x_display, x_picture);
-
-  x_damage = 0;
-  x_picture = 0;
+      x_picture = 0;
+    }
 }
 
 void

@@ -658,7 +658,26 @@ x_process_events (void)
                 {
                   if (!ws)
                     {
-                      ws = &scr->workspaces[scr->active_workspace];
+                      unsigned int workspace;
+
+                      if (w->type == window_type_normal)
+                        {
+                          for (workspace = scr->active_workspace; workspace < 24; ++workspace)
+                            {
+                              if (scr->workspaces[workspace].empty ())
+                                break;
+                            }
+
+                          /* All workspaces are full; do not map window */
+                          if (workspace == 24)
+                            break;
+
+                          scr->active_workspace = workspace;
+                        }
+                      else
+                        workspace = scr->active_workspace;
+
+                      ws = &scr->workspaces[workspace];
 
                       current_session.move_window (w, scr, ws);
                     }

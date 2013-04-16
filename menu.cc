@@ -130,7 +130,7 @@ void
 menu_draw_desktops (const struct screen& scr)
 {
   unsigned int thumb_width, thumb_height, thumb_margin;
-  unsigned int i;
+  size_t i;
   int x = 0, y;
   time_t ttnow;
   struct tm* tmnow;
@@ -142,9 +142,9 @@ menu_draw_desktops (const struct screen& scr)
   ttnow = time(0);
   tmnow = localtime(&ttnow);
   strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", tmnow);
-  swprintf(wbuf, sizeof(wbuf), L"%s", buf);
-
-  swprintf (wcschr (wbuf, 0), sizeof (wbuf),
+  swprintf(wbuf, sizeof(wbuf) / sizeof (wbuf[0]), L"%s", buf);
+  i = wcslen (wbuf);
+  swprintf (&wbuf[i], sizeof (wbuf) / sizeof (wbuf[0]) - i,
             L"  %s", PACKAGE_STRING);
 
   x = thumb_margin;

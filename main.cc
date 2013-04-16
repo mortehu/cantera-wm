@@ -110,7 +110,7 @@ x_grab_keys (Window x_window)
     {
       gmod = global_modifiers[i];
 
-      for (f = 0; f < 9; ++f)
+      for (f = 0; f < current_session.screens.size (); ++f)
         XGrabKey (x_display, XKeysymToKeycode (x_display, XK_1 + f), Mod4Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
 
       XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Left), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);

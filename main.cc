@@ -346,7 +346,10 @@ launch_program (const char* command, Time when)
 
   args[0] = (char *) "/bin/sh";
   args[1] = (char *) "-c";
-  asprintf(&args[2], "exec %s", command);
+
+  if (-1 == asprintf(&args[2], "exec %s", command))
+    return -1;
+
   args[3] = (char *) NULL;
 
   /* Can't use vfork() because we want to call setsid */

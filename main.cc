@@ -891,10 +891,10 @@ rect::union_rect (struct rect &other)
     y = other.y;
 
   if (x + width < other.x + other.width)
-    width = other.x - other.width - x;
+    width = (other.x + other.width) - x;
 
   if (y + height < other.y + other.width)
-    height = other.y - other.width - y;
+    height = (other.y + other.width) - y;
 }
 
 window::window ()

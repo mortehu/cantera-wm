@@ -403,7 +403,7 @@ x_paint_dirty_windows (void)
       XRenderFillRectangle (x_display, PictOpSrc, screen.x_buffer, &black,
                             0, 0, screen.geometry.width, screen.geometry.height);
 
-      for (auto &window : screen.workspaces[screen.active_workspace])
+      for (auto &window : screen.ancillary_windows)
         {
           if (!window->x_picture)
             continue;
@@ -420,7 +420,7 @@ x_paint_dirty_windows (void)
                             window->real_position.width, window->real_position.height);
         }
 
-      for (auto &window : screen.ancillary_windows)
+      for (auto &window : screen.workspaces[screen.active_workspace])
         {
           if (!window->x_picture)
             continue;

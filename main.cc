@@ -375,7 +375,7 @@ launch_program (const char* command, Time when)
 
   execve (args[0], args, environ);
 
-  exit (EXIT_FAILURE);
+  _exit (EXIT_FAILURE);
 }
 
 static void

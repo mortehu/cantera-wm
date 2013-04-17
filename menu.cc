@@ -215,10 +215,10 @@ menu_draw_desktops (const struct screen& scr)
         {
           int scaled_x, scaled_y, scaled_width, scaled_height;
 
-          scaled_x = w->position.x >> 1;
+          scaled_x = (w->position.x - scr.geometry.x) >> 1;
           scaled_width = w->position.width >> 1;
 
-          scaled_y = w->position.y >> 1;
+          scaled_y = (w->position.y - scr.geometry.y) >> 1;
           scaled_height = w->position.height >> 1;
 
           XRenderSetPictureTransform (x_display, w->x_picture, (XTransform *) &scr.initial_transform);

@@ -95,42 +95,45 @@ x_error_discarder (Display *display, XErrorEvent *error)
 }
 
 static void
-x_grab_keys (Window x_window)
+x_grab_key (KeySym key, unsigned int modifiers)
+{
+  XGrabKey (x_display, XKeysymToKeycode (x_display, key),
+            modifiers, x_root_window, False,
+            GrabModeAsync, GrabModeAsync);
+}
+
+static void
+x_grab_keys (void)
 {
   static const int global_modifiers[] = { 0, LockMask, LockMask | Mod2Mask, Mod2Mask };
   size_t i, f, gmod;
 
-  XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Alt_L), Mod4Mask, x_window, False, GrabModeAsync, GrabModeAsync);
-  XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Alt_R), Mod4Mask, x_window, False, GrabModeAsync, GrabModeAsync);
+  x_grab_key (XK_Alt_L, Mod4Mask);
+  x_grab_key (XK_Alt_R, Mod4Mask);
 
-  XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Super_L), AnyModifier, x_window, False, GrabModeAsync, GrabModeAsync);
-  XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Super_R), AnyModifier, x_window, False, GrabModeAsync, GrabModeAsync);
+  x_grab_key (XK_Super_L, AnyModifier);
+  x_grab_key (XK_Super_R, AnyModifier);
 
   for (i = 0; i < sizeof (global_modifiers) / sizeof (global_modifiers[0]); ++i)
     {
       gmod = global_modifiers[i];
 
       for (f = 0; f < current_session.screens.size (); ++f)
-        XGrabKey (x_display, XKeysymToKeycode (x_display, XK_1 + f), Mod4Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
+        x_grab_key (XK_1 + f, Mod4Mask | gmod);
 
-      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Left), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
-      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Right), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
-      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Up), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
-      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Down), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
-
-      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_q), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
-      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_q), ControlMask | Mod4Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
-      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Q), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
-      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Q), ControlMask | Mod4Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
+      x_grab_key (XK_Left,  ControlMask | Mod1Mask | gmod);
+      x_grab_key (XK_Right, ControlMask | Mod1Mask | gmod);
+      x_grab_key (XK_Up,    ControlMask | Mod1Mask | gmod);
+      x_grab_key (XK_Down,  ControlMask | Mod1Mask | gmod);
 
       for (f = 0; f < 12; ++f)
         {
-          XGrabKey (x_display, XKeysymToKeycode (x_display, XK_F1 + f), ControlMask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
-          XGrabKey (x_display, XKeysymToKeycode (x_display, XK_F1 + f), Mod4Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
+          x_grab_key (XK_F1 + f, ControlMask | gmod);
+          x_grab_key (XK_F1 + f, Mod4Mask | gmod);
         }
 
-      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Escape), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
-      XGrabKey (x_display, XKeysymToKeycode (x_display, XK_F4), Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
+      x_grab_key (XK_Escape, ControlMask | Mod1Mask | gmod);
+      x_grab_key (XK_F4, Mod1Mask | gmod);
     }
 }
 
@@ -300,7 +303,7 @@ x_connect (void)
       window_attr.event_mask &= ~(KeyPressMask | KeyReleaseMask);
     }
 
-  x_grab_keys (x_root_window);
+  x_grab_keys ();
 
   fprintf (stderr, "Root has window %08lx\n", x_root_window);
 

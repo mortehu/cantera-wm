@@ -518,13 +518,17 @@ x_process_events (void)
 
   x_paint_dirty_windows ();
 
-  while (0 == XNextEvent (x_display, &event))
+  for (;;)
     {
+      XNextEvent (x_display, &event);
+
+      if (XFilterEvent (&event, event.xkey.window))
+        continue;
+
       switch (event.type)
         {
         case KeyPress:
 
-          if (!XFilterEvent (&event, event.xkey.window))
             {
               wchar_t text[32];
               Status status;

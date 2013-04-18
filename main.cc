@@ -66,6 +66,9 @@ namespace xa
   Atom net_wm_window_type_splash;
   Atom net_wm_window_type_dialog;
   Atom net_wm_window_type_normal;
+
+  Atom wm_protocols;
+  Atom wm_delete_window;
 }
 
 static int
@@ -166,6 +169,8 @@ x_connect (void)
   xa::net_wm_window_type_splash =  XInternAtom (x_display, "_NET_WM_WINDOW_TYPE_SPLASH", False);
   xa::net_wm_window_type_dialog =  XInternAtom (x_display, "_NET_WM_WINDOW_TYPE_DIALOG", False);
   xa::net_wm_window_type_normal =  XInternAtom (x_display, "_NET_WM_WINDOW_TYPE_NORMAL", False);
+  xa::wm_protocols =               XInternAtom (x_display, "WM_PROTOCOLS", False);
+  xa::wm_delete_window =           XInternAtom (x_display, "WM_DELETE_WINDOW", False);
 
   if ((c = XSetLocaleModifiers ("")) && *c)
     x_im = XOpenIM (x_display, 0, 0, 0);
@@ -584,30 +589,29 @@ x_process_events (void)
                 {
                   showing_menu = true;
                 }
-              else
+              else if(mod1_pressed && key_sym == XK_F4)
                 {
-                  switch (key_sym)
-                    {
-                    case XK_Home:
+                  XClientMessageEvent cme;
+                  screen *scr;
+                  window *w;
 
-                        {
-                          pid_t child;
+                  scr = &current_session.screens[current_session.active_screen];
 
-                          if (!(child = fork ()))
-                            {
-                              char *args[2];
+                  if (scr->workspaces[scr->active_workspace].empty ())
+                    break;
 
-                              args[0] = (char *) "/usr/local/bin/cantera-term";
-                              args[1] = NULL;
+                  w = scr->workspaces[scr->active_workspace].front ();
 
-                              execve (args[0], args, environ);
+                  cme.type = ClientMessage;
+                  cme.send_event = True;
+                  cme.display = x_display;
+                  cme.window = w->x_window;
+                  cme.message_type = xa::wm_protocols;
+                  cme.format = 32;
+                  cme.data.l[0] = xa::wm_delete_window;
+                  cme.data.l[1] = event.xkey.time;
 
-                              exit (EXIT_FAILURE);
-                            }
-                        }
-
-                      break;
-                    }
+                  XSendEvent (x_display, w->x_window, False, 0, (XEvent *) &cme);
                 }
             }
 

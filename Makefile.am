@@ -9,4 +9,4 @@ cantera_wm_SOURCES = \
   arena.c arena.h \
   io.c io.h \
   tree.c tree.h
-cantera_wm_LDFLAGS = $(PACKAGES_LIBS)
+cantera_wm_LDADD = $(PACKAGES_LIBS)

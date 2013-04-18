@@ -110,7 +110,7 @@ x_grab_keys (Window x_window)
     {
       gmod = global_modifiers[i];
 
-      for (f = 0; f < 9; ++f)
+      for (f = 0; f < current_session.screens.size (); ++f)
         XGrabKey (x_display, XKeysymToKeycode (x_display, XK_1 + f), Mod4Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
 
       XGrabKey (x_display, XKeysymToKeycode (x_display, XK_Left), ControlMask | Mod1Mask | gmod, x_window, False, GrabModeAsync, GrabModeAsync);
@@ -346,7 +346,10 @@ launch_program (const char* command, Time when)
 
   args[0] = (char *) "/bin/sh";
   args[1] = (char *) "-c";
-  asprintf(&args[2], "exec %s", command);
+
+  if (-1 == asprintf(&args[2], "exec %s", command))
+    return -1;
+
   args[3] = (char *) NULL;
 
   /* Can't use vfork() because we want to call setsid */
@@ -372,7 +375,7 @@ launch_program (const char* command, Time when)
 
   execve (args[0], args, environ);
 
-  exit (EXIT_FAILURE);
+  _exit (EXIT_FAILURE);
 }
 
 static void
@@ -392,7 +395,11 @@ x_paint_dirty_windows (void)
           if (!screen.x_damage_region)
             continue;
 
+#if 0
+          /* XXX: Buggy on dual monitors, except for the monitor at offset 0,0 */
+
           XFixesSetPictureClipRegion (x_display, screen.x_buffer, 0, 0, screen.x_damage_region);
+#endif
         }
 
       black.red = 0x0000;
@@ -461,6 +468,45 @@ x_paint_dirty_windows (void)
 }
 
 static void
+update_focus (unsigned int screen_index, unsigned int workspace_index, Time x_event_time)
+{
+  screen *scr;
+  bool hide_and_show;
+
+  scr = &current_session.screens[screen_index];
+
+  if ((hide_and_show = (scr->active_workspace != workspace_index))
+      || current_session.active_screen != screen_index)
+    {
+      Window focus_window;
+
+      focus_window = x_root_window;
+
+      for (auto window : scr->workspaces[workspace_index])
+        {
+          if (hide_and_show)
+            window->show ();
+
+          focus_window = window->x_window;
+        }
+
+      if (hide_and_show)
+        {
+          for (auto window : scr->workspaces[scr->active_workspace])
+            window->hide ();
+        }
+
+      scr->active_workspace = workspace_index;
+      current_session.active_screen = screen_index;
+
+      /* XXX: Check with ICCCM what the other parameters should be */
+      XSetInputFocus (x_display, focus_window, RevertToPointerRoot, x_event_time);
+
+      /* XXX: Clear navigation stack when implemented */
+    }
+}
+
+static void
 x_process_events (void)
 {
   XEvent event;
@@ -477,8 +523,6 @@ x_process_events (void)
 
           if (!XFilterEvent (&event, event.xkey.window))
             {
-              screen *scr;
-
               wchar_t text[32];
               Status status;
               KeySym key_sym;
@@ -499,8 +543,6 @@ x_process_events (void)
                 super_pressed = true;
               else if (key_sym == XK_Alt_L || key_sym == XK_Alt_R)
                 mod1_pressed = true;
-
-              scr = &current_session.screens[current_session.active_screen];
 
               if ((key_sym == XK_q || key_sym == XK_Q) && (ctrl_pressed && mod1_pressed))
                 exit (EXIT_SUCCESS);
@@ -524,27 +566,15 @@ x_process_events (void)
                   if (super_pressed)
                     new_active_workspace += 12;
 
-                  if (new_active_workspace != scr->active_workspace)
-                    {
-                      Window focus_window = x_root_window;
+                  update_focus (current_session.active_screen, new_active_workspace, event.xkey.time);
+                }
+              else if (super_pressed && key_sym >= XK_1 && key_sym < XK_1 + current_session.screens.size ())
+                {
+                  unsigned int new_screen;
 
-                      for (auto window : scr->workspaces[new_active_workspace])
-                        {
-                          window->show ();
+                  new_screen = key_sym - XK_1;
 
-                          focus_window = window->x_window;
-                        }
-
-                      for (auto window : scr->workspaces[scr->active_workspace])
-                        window->hide ();
-
-                      scr->active_workspace = new_active_workspace;
-
-                      /* XXX: Check with ICCCM what the other parameters should be */
-                      XSetInputFocus (x_display, focus_window, RevertToPointerRoot, event.xkey.time);
-
-                      /* XXX: Clear navigation stack when implemented */
-                    }
+                  update_focus (new_screen, current_session.screens[new_screen].active_workspace, event.xkey.time);
                 }
               else if(super_pressed && (mod1_pressed ^ ctrl_pressed))
                 {
@@ -655,7 +685,26 @@ x_process_events (void)
                 {
                   if (!ws)
                     {
-                      ws = &scr->workspaces[scr->active_workspace];
+                      unsigned int workspace;
+
+                      if (w->type == window_type_normal)
+                        {
+                          for (workspace = scr->active_workspace; workspace < 24; ++workspace)
+                            {
+                              if (scr->workspaces[workspace].empty ())
+                                break;
+                            }
+
+                          /* All workspaces are full; do not map window */
+                          if (workspace == 24)
+                            break;
+
+                          scr->active_workspace = workspace;
+                        }
+                      else
+                        workspace = scr->active_workspace;
+
+                      ws = &scr->workspaces[workspace];
 
                       current_session.move_window (w, scr, ws);
                     }
@@ -869,10 +918,10 @@ rect::union_rect (struct rect &other)
     y = other.y;
 
   if (x + width < other.x + other.width)
-    width = other.x - other.width - x;
+    width = (other.x + other.width) - x;
 
   if (y + height < other.y + other.width)
-    height = other.y - other.width - y;
+    height = (other.y + other.width) - y;
 }
 
 window::window ()

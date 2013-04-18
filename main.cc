@@ -551,9 +551,6 @@ x_process_events (void)
               else if (key_sym == XK_Alt_L || key_sym == XK_Alt_R)
                 mod1_pressed = true;
 
-              if ((key_sym == XK_q || key_sym == XK_Q) && (ctrl_pressed && mod1_pressed))
-                exit (EXIT_SUCCESS);
-
               if (key_sym >= 'a' && key_sym <= 'z' && super_pressed)
                 {
                   char key[10];

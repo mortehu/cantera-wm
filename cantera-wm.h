@@ -104,6 +104,8 @@ struct screen
 
   std::vector<Picture> resize_buffers;
   XTransform initial_transform;
+
+  std::vector<unsigned int> navigation_stack;
 };
 
 struct session

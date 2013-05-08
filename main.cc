@@ -505,12 +505,9 @@ update_focus (unsigned int screen_index, unsigned int workspace_index, Time x_ev
         }
 
       scr->active_workspace = workspace_index;
-      current_session.active_screen = screen_index;
 
-      /* XXX: Check with ICCCM what the other parameters should be */
-      XSetInputFocus (x_display, focus_window, RevertToPointerRoot, x_event_time);
-
-      /* XXX: Clear navigation stack when implemented */
+      if (current_session.active_screen == screen_index)
+        XSetInputFocus (x_display, focus_window, RevertToPointerRoot, x_event_time);
     }
 }
 
@@ -569,6 +566,7 @@ x_process_events (void)
               else if ((super_pressed ^ ctrl_pressed) && key_sym >= XK_F1 && key_sym <= XK_F12)
                 {
                   unsigned int new_active_workspace;
+                  screen *scr;
 
                   new_active_workspace = key_sym - XK_F1;
 
@@ -576,6 +574,10 @@ x_process_events (void)
                     new_active_workspace += 12;
 
                   update_focus (current_session.active_screen, new_active_workspace, event.xkey.time);
+
+                  scr = &current_session.screens[current_session.active_screen];
+                  scr->navigation_stack.clear ();
+                  scr->navigation_stack.push_back (new_active_workspace);
                 }
               else if (super_pressed && key_sym >= XK_1 && key_sym < XK_1 + current_session.screens.size ())
                 {
@@ -583,6 +585,7 @@ x_process_events (void)
 
                   new_screen = key_sym - XK_1;
 
+                  current_session.active_screen = new_screen;
                   update_focus (new_screen, current_session.screens[new_screen].active_workspace, event.xkey.time);
                 }
               else if(super_pressed && (mod1_pressed ^ ctrl_pressed))
@@ -708,6 +711,14 @@ x_process_events (void)
                             break;
 
                           scr->active_workspace = workspace;
+
+                          auto &navstack = scr->navigation_stack;
+
+                          navstack.erase (std::remove(navstack.begin (),
+                                                      navstack.end (),
+                                                      workspace),
+                                          navstack.end ());
+                          navstack.push_back (workspace);
                         }
                       else
                         workspace = scr->active_workspace;
@@ -1187,6 +1198,8 @@ session::remove_x_window (Window x_window)
       return;
     }
 
+  unsigned int screen_index = 0;
+
   for (auto &screen : screens)
     {
       auto i = std::find_if (screen.ancillary_windows.begin (),
@@ -1203,6 +1216,8 @@ session::remove_x_window (Window x_window)
           return;
         }
 
+      unsigned int workspace_index = 0;
+
       for (auto &workspace : screen.workspaces)
         {
           auto i = std::find_if (workspace.begin (),
@@ -1216,9 +1231,29 @@ session::remove_x_window (Window x_window)
 
               workspace.erase (i);
 
+              if (workspace.empty ())
+                {
+                  auto &navstack = screen.navigation_stack;
+
+                  navstack.erase (std::remove(navstack.begin (),
+                                              navstack.end (),
+                                              workspace_index),
+                                  navstack.end ());
+
+                  if (screen.active_workspace == workspace_index
+                      && !navstack.empty())
+                    {
+                      update_focus (screen_index, navstack.back (), CurrentTime);
+                    }
+                }
+
               return;
             }
+
+          ++workspace_index;
         }
+
+      ++screen_index;
     }
 }
 

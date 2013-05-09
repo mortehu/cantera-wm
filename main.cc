@@ -478,37 +478,33 @@ x_paint_dirty_windows (void)
 static void
 update_focus (unsigned int screen_index, unsigned int workspace_index, Time x_event_time)
 {
+  Window focus_window;
   screen *scr;
   bool hide_and_show;
 
   scr = &current_session.screens[screen_index];
 
-  if ((hide_and_show = (scr->active_workspace != workspace_index))
-      || current_session.active_screen != screen_index)
-    {
-      Window focus_window;
+  hide_and_show = (scr->active_workspace != workspace_index);
 
-      focus_window = x_root_window;
+  focus_window = x_root_window;
 
-      for (auto window : scr->workspaces[workspace_index])
-        {
-          if (hide_and_show)
-            window->show ();
+  for (auto window : scr->workspaces[workspace_index])
+  {
+    if (hide_and_show)
+      window->show ();
 
-          focus_window = window->x_window;
-        }
+    focus_window = window->x_window;
+  }
 
-      if (hide_and_show)
-        {
-          for (auto window : scr->workspaces[scr->active_workspace])
-            window->hide ();
-        }
+  if (hide_and_show)
+  {
+    for (auto window : scr->workspaces[scr->active_workspace])
+      window->hide ();
+  }
 
-      scr->active_workspace = workspace_index;
+  scr->active_workspace = workspace_index;
 
-      if (current_session.active_screen == screen_index)
-        XSetInputFocus (x_display, focus_window, RevertToPointerRoot, x_event_time);
-    }
+  XSetInputFocus (x_display, focus_window, RevertToPointerRoot, x_event_time);
 }
 
 static void

@@ -1,4 +1,5 @@
 bin_PROGRAMS = cantera-wm
+noinst_PROGRAMS = focus-debug
 
 AM_CXXFLAGS = -std=c++11 -Wall -g $(PACKAGES_CFLAGS)
 
@@ -10,3 +11,6 @@ cantera_wm_SOURCES = \
   io.c io.h \
   tree.c tree.h
 cantera_wm_LDADD = $(PACKAGES_LIBS)
+
+focus_debug_SOURCES = focus-debug.c
+focus_debug_LDADD = $(PACKAGES_LIBS)

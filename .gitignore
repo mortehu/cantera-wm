@@ -4,6 +4,7 @@
 *.status
 .*.sw?
 .deps
+/focus-debug
 Makefile
 Makefile.in
 aclocal.m4

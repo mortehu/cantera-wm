@@ -792,7 +792,7 @@ x_process_events (void)
               workspace *ws;
               window *w;
 
-              fprintf (stderr, "Window %08lx was unmapped\n", destroy_event.xdestroywindow.window);
+              fprintf (stderr, "Window %08lx was unmapped\n", event.xdestroywindow.window);
               current_session.repaint_all = true;
 
               /* Window is probably destroyed, so we check that first */

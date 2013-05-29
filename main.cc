@@ -3,8 +3,12 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <set>
+
 #include <err.h>
 #include <signal.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <X11/Xatom.h>
@@ -36,6 +40,8 @@ namespace cantera_wm
   int x_damage_errorbase;
 
   session current_session;
+
+  std::set<pid_t> children;
 }
 
 using namespace cantera_wm;
@@ -366,7 +372,11 @@ launch_program (const char* command, Time when)
     return -1;
 
   if (pid)
-    return pid;
+    {
+      children.insert (pid);
+
+      return pid;
+    }
 
   setsid ();
 
@@ -508,6 +518,19 @@ update_focus (unsigned int screen_index, unsigned int workspace_index, Time x_ev
 }
 
 static void
+wait_for_dead_children (void)
+{
+  int status;
+  pid_t child;
+
+  while (!children.empty ()
+         && (0 < (child = waitpid (0, &status, WNOHANG))))
+    {
+      children.erase (child);
+    }
+}
+
+static void
 x_process_events (void)
 {
   XEvent event;
@@ -518,6 +541,8 @@ x_process_events (void)
 
   for (;;)
     {
+      wait_for_dead_children ();
+
       XNextEvent (x_display, &event);
 
       if (XFilterEvent (&event, event.xkey.window))

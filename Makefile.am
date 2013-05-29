@@ -1,7 +1,9 @@
 bin_PROGRAMS = cantera-wm
 noinst_PROGRAMS = focus-debug
 
-AM_CXXFLAGS = -std=c++11 -Wall -g $(PACKAGES_CFLAGS)
+ACLOCAL_AMFLAGS = -I m4
+
+AM_CXXFLAGS = -Wall -g $(PACKAGES_CFLAGS)
 
 cantera_wm_SOURCES = \
   cantera-wm.h \

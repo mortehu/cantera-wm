@@ -367,7 +367,6 @@ launch_program (const char* command, Time when)
   args[3] = (char *) NULL;
 
   /* Can't use vfork() because we want to call setsid */
-
   if (-1 == (pid = fork ()))
     return -1;
 
@@ -379,17 +378,6 @@ launch_program (const char* command, Time when)
     }
 
   setsid ();
-
-#if 0
-  sprintf (buf, "%llu", (unsigned long long int) when);
-  setenv ("DESKTOP_STARTUP_ID", buf, 1);
-
-  sprintf (buf, ".cantera/bash-history-%02d", current_screen->active_terminal);
-  setenv ("HISTFILE", buf, 1);
-
-  sprintf (buf, ".cantera/session-%02d", current_screen->active_terminal);
-  setenv ("SESSION_PATH", buf, 1);
-#endif
 
   execve (args[0], args, environ);
 

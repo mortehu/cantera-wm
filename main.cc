@@ -512,7 +512,7 @@ wait_for_dead_children (void)
   pid_t child;
 
   while (!children.empty ()
-         && (0 < (child = waitpid (0, &status, WNOHANG))))
+         && (0 < (child = waitpid (-1, &status, WNOHANG))))
     {
       children.erase (child);
     }

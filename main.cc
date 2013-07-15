@@ -915,10 +915,30 @@ x_process_events (void)
     }
 }
 
+static void
+reload_config (void)
+{
+  if (config)
+    tree_destroy (config);
+
+  config = tree_load_cfg (".cantera/config");
+}
+
+static void
+sighandler (int signal)
+{
+  switch (signal)
+    {
+    case SIGUSR1: reload_config (); break;
+    }
+}
+
 int
 main (int argc, char **argv)
 {
   char *home;
+
+  signal (SIGUSR1, sighandler);
 
   if (!(home = getenv ("HOME")))
     errx (EXIT_FAILURE, "Missing HOME environment variable");
@@ -929,7 +949,7 @@ main (int argc, char **argv)
   if (-1 == chdir (home))
     err (EXIT_FAILURE, "Unable to chdir to '%s'", home);
 
-  config = tree_load_cfg (".cantera/config");
+  reload_config ();
 
   x_connect ();
 

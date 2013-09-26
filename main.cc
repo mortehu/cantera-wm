@@ -1032,7 +1032,7 @@ window::get_hints ()
   if (x_transient_for)
     {
       if (type == window_type_normal)
-	type = window_type_dialog;
+        type = window_type_dialog;
     }
 }
 

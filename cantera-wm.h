@@ -13,6 +13,8 @@
 
 namespace cantera_wm {
 
+extern const size_t kWorkspaceCount;
+
 extern Display *x_display;
 extern int x_screen_index;
 extern Screen *x_screen;

@@ -24,6 +24,8 @@
 #include "tree.h"
 
 namespace cantera_wm {
+const size_t kWorkspaceCount = 24;
+
 Display *x_display;
 int x_screen_index;
 Screen *x_screen;
@@ -570,7 +572,8 @@ static void x_process_events(void) {
             screen *scr =
                 &current_session.screens[current_session.active_screen];
             unsigned int new_workspace =
-                (24 + scr->active_workspace + direction) % 24;
+                (kWorkspaceCount + scr->active_workspace + direction) %
+                kWorkspaceCount;
 
             if (ctrl_pressed) {
               scr->workspaces[scr->active_workspace]
@@ -683,13 +686,13 @@ static void x_process_events(void) {
             unsigned int workspace;
 
             if (w->type == window_type_normal) {
-              for (workspace = scr->active_workspace; workspace < 24;
-                   ++workspace) {
+              for (workspace = scr->active_workspace;
+                   workspace < kWorkspaceCount; ++workspace) {
                 if (scr->workspaces[workspace].empty()) break;
               }
 
               /* All workspaces are full; do not map window */
-              if (workspace == 24) break;
+              if (workspace == kWorkspaceCount) break;
 
               scr->active_workspace = workspace;
 

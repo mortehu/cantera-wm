@@ -15,10 +15,10 @@ namespace cantera_wm {
 
 extern Display *x_display;
 extern int x_screen_index;
-extern Screen* x_screen;
-extern Visual* x_visual;
-extern XRenderPictFormat* x_render_visual_format;
-extern XVisualInfo* x_visual_info;
+extern Screen *x_screen;
+extern Visual *x_visual;
+extern XRenderPictFormat *x_render_visual_format;
+extern XVisualInfo *x_visual_info;
 extern int x_visual_info_count;
 extern Window x_root_window;
 
@@ -31,8 +31,7 @@ struct session;
 
 extern session current_session;
 
-enum window_type
-{
+enum window_type {
   window_type_unknown,
   window_type_desktop,
   window_type_dock,
@@ -44,15 +43,13 @@ enum window_type
   window_type_normal
 };
 
-struct rect : XRectangle
-{
-  void union_rect (struct rect &other);
+struct rect : XRectangle {
+  void union_rect(struct rect &other);
 };
 
-struct window
-{
-  window ();
-  ~window ();
+struct window {
+  window();
+  ~window();
 
   window_type type;
 
@@ -65,29 +62,28 @@ struct window
   struct rect position;
   struct rect real_position;
 
-  void get_hints ();
-  void constrain_size ();
+  void get_hints();
+  void constrain_size();
 
-  void init_composite ();
-  void reset_composite ();
+  void init_composite();
+  void reset_composite();
 
-  void show ();
-  void hide ();
+  void show();
+  void hide();
 
   bool override_redirect;
 
-private:
-  window (const window &rhs);
-  window& operator=(const window &rhs);
+ private:
+  window(const window &rhs);
+  window &operator=(const window &rhs);
 };
 
 typedef std::vector<window *> workspace;
 
-struct screen
-{
-  screen ();
+struct screen {
+  screen();
 
-  void paint ();
+  void paint();
 
   std::vector<window *> ancillary_windows;
 
@@ -108,8 +104,7 @@ struct screen
   std::vector<unsigned int> navigation_stack;
 };
 
-struct session
-{
+struct session {
   session();
 
   struct rect desktop_geometry;
@@ -123,13 +118,12 @@ struct session
 
   bool repaint_all;
 
-  screen *find_screen_for_window (Window x_window);
+  screen *find_screen_for_window(Window x_window);
 
-  window *find_x_window (Window x_window,
-                         workspace **workspace_ret = NULL,
-                         screen **screen_ret = NULL);
-  void remove_x_window (Window x_window);
-  void move_window (window *, screen *scre, workspace *ws);
+  window *find_x_window(Window x_window, workspace **workspace_ret = NULL,
+                        screen * *screen_ret = NULL);
+  void remove_x_window(Window x_window);
+  void move_window(window *, screen *scre, workspace *ws);
 };
 
 } /* namespace cantera_wm */

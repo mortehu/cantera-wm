@@ -7,8 +7,7 @@
 extern "C" {
 #endif
 
-struct arena_info
-{
+struct arena_info {
   void* data;
   size_t size;
   size_t used;
@@ -17,20 +16,15 @@ struct arena_info
   struct arena_info* last;
 };
 
-void
-arena_init(struct arena_info* arena);
+void arena_init(struct arena_info* arena);
 
-void
-arena_free(struct arena_info* arena);
+void arena_free(struct arena_info* arena);
 
-void*
-arena_alloc(struct arena_info* arena, size_t size);
+void* arena_alloc(struct arena_info* arena, size_t size);
 
-void*
-arena_calloc(struct arena_info* arena, size_t size);
+void* arena_calloc(struct arena_info* arena, size_t size);
 
-char*
-arena_strdup(struct arena_info* arena, const char* string);
+char* arena_strdup(struct arena_info* arena, const char* string);
 
 #ifdef __cplusplus
 }

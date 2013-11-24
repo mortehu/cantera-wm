@@ -550,7 +550,42 @@ static void x_process_events(void) {
                        current_session.screens[new_screen].active_workspace,
                        event.xkey.time);
         } else if (super_pressed && (mod1_pressed ^ ctrl_pressed)) {
+          int direction = 0;
           showing_menu = true;
+          switch (key_sym) {
+            case XK_Up:
+              direction = -12;
+              break;
+            case XK_Down:
+              direction = 12;
+              break;
+            case XK_Left:
+              direction = -1;
+              break;
+            case XK_Right:
+              direction = 1;
+              break;
+          }
+          if (direction) {
+            screen *scr =
+                &current_session.screens[current_session.active_screen];
+            unsigned int new_workspace =
+                (24 + scr->active_workspace + direction) % 24;
+
+            if (ctrl_pressed) {
+              scr->workspaces[scr->active_workspace]
+                  .swap(scr->workspaces[new_workspace]);
+              if (!scr->navigation_stack.empty())
+                scr->navigation_stack.back() = new_workspace;
+              scr->active_workspace = new_workspace;
+            } else {
+              update_focus(current_session.active_screen, new_workspace,
+                           event.xkey.time);
+
+              scr->navigation_stack.clear();
+              scr->navigation_stack.push_back(new_workspace);
+            }
+          }
         } else if (mod1_pressed && key_sym == XK_F4) {
           XClientMessageEvent cme;
           screen *scr;

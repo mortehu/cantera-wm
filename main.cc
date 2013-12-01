@@ -691,8 +691,15 @@ static void x_process_events(void) {
                 if (scr->workspaces[workspace].empty()) break;
               }
 
-              /* All workspaces are full; do not map window */
-              if (workspace == kWorkspaceCount) break;
+              if (workspace == kWorkspaceCount) {
+                for (workspace = 0; workspace < scr->active_workspace;
+                     ++workspace) {
+                  if (scr->workspaces[workspace].empty()) break;
+                }
+
+                // All workspaces are full; do not map window.
+                if (workspace == scr->active_workspace) break;
+              }
 
               scr->active_workspace = workspace;
 

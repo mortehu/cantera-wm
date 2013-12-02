@@ -362,17 +362,6 @@ static pid_t launch_program(const char *command, Time when) {
 
   setsid();
 
-#if 0
-  sprintf(buf, "%llu", (unsigned long long int) when);
-  setenv("DESKTOP_STARTUP_ID", buf, 1);
-
-  sprintf(buf, ".cantera/bash-history-%02d", current_screen->active_terminal);
-  setenv("HISTFILE", buf, 1);
-
-  sprintf(buf, ".cantera/session-%02d", current_screen->active_terminal);
-  setenv("SESSION_PATH", buf, 1);
-#endif
-
   execve(args[0], args, environ);
 
   _exit(EXIT_FAILURE);
@@ -474,9 +463,8 @@ static void wait_for_dead_children(void) {
   int status;
   pid_t child;
 
-  while (!children.empty() && (0 < (child = waitpid(0, &status, WNOHANG)))) {
+  while (!children.empty() && (0 < (child = waitpid(-1, &status, WNOHANG))))
     children.erase(child);
-  }
 }
 
 static void x_process_events(void) {
@@ -865,8 +853,24 @@ static void x_process_events(void) {
   }
 }
 
+static void reload_config(void) {
+  if (config) tree_destroy(config);
+
+  config = tree_load_cfg(".cantera/config");
+}
+
+static void sighandler(int signal) {
+  switch (signal) {
+    case SIGUSR1:
+      reload_config();
+      break;
+  }
+}
+
 int main(int argc, char **argv) {
   char *home;
+
+  signal(SIGUSR1, sighandler);
 
   if (!(home = getenv("HOME")))
     errx(EXIT_FAILURE, "Missing HOME environment variable");
@@ -876,7 +880,7 @@ int main(int argc, char **argv) {
 
   if (-1 == chdir(home)) err(EXIT_FAILURE, "Unable to chdir to '%s'", home);
 
-  config = tree_load_cfg(".cantera/config");
+  reload_config();
 
   x_connect();
 
@@ -943,9 +947,8 @@ void window::get_hints() {
   XSync(x_display, False);
   XSetErrorHandler(x_error_handler);
 
-  if (x_transient_for) {
-    if (type == window_type_normal) type = window_type_dialog;
-  }
+  if (x_transient_for && type == window_type_normal)
+    type = window_type_dialog;
 }
 
 void window::constrain_size() {}

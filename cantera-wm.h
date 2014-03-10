@@ -6,6 +6,7 @@
 #include <X11/Xproto.h>
 
 #include <X11/extensions/Xdamage.h>
+#include <X11/extensions/Xrender.h>
 
 #include <memory>
 #include <set>

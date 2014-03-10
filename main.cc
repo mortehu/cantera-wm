@@ -11,7 +11,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xproto.h>
 
@@ -22,8 +21,10 @@
 #include "cantera-wm.h"
 #include "menu.h"
 #include "tree.h"
+#include "xa.h"
 
 namespace cantera_wm {
+
 const size_t kWorkspaceCount = 24;
 
 Display *x_display;
@@ -43,11 +44,13 @@ int x_damage_errorbase;
 session current_session;
 
 std::set<pid_t> children;
-}
+
+}  // namespace cantera_wm
 
 using namespace cantera_wm;
 
 namespace {
+
 bool ctrl_pressed;
 bool mod1_pressed;
 bool super_pressed;
@@ -58,25 +61,8 @@ int (*x_default_error_handler)(Display *, XErrorEvent *error);
 struct tree *config;
 
 bool showing_menu;
-}
 
-namespace xa {
-Atom net_wm_window_type;
-
-Atom net_wm_window_type_desktop;
-Atom net_wm_window_type_dock;
-Atom net_wm_window_type_toolbar;
-Atom net_wm_window_type_menu;
-Atom net_wm_window_type_utility;
-Atom net_wm_window_type_splash;
-Atom net_wm_window_type_dialog;
-Atom net_wm_window_type_normal;
-
-Atom wm_protocols;
-Atom wm_delete_window;
-}
-
-static int x_error_handler(Display *display, XErrorEvent *error) {
+int x_error_handler(Display *display, XErrorEvent *error) {
   int result = 0;
 
   if (error->error_code == BadAccess &&
@@ -95,14 +81,12 @@ static int x_error_handler(Display *display, XErrorEvent *error) {
   return result;
 }
 
-static int x_error_discarder(Display *display, XErrorEvent *error) { return 0; }
-
-static void x_grab_key(KeySym key, unsigned int modifiers) {
+void x_grab_key(KeySym key, unsigned int modifiers) {
   XGrabKey(x_display, XKeysymToKeycode(x_display, key), modifiers,
            x_root_window, False, GrabModeAsync, GrabModeAsync);
 }
 
-static void x_grab_keys(void) {
+void x_grab_keys() {
   static const int global_modifiers[] = { 0, LockMask, LockMask | Mod2Mask,
                                           Mod2Mask };
   size_t i, f, gmod;
@@ -134,7 +118,7 @@ static void x_grab_keys(void) {
   }
 }
 
-static void x_connect(void) {
+void x_connect() {
   int dummy, major, minor;
   char *c;
 
@@ -312,7 +296,7 @@ static void x_connect(void) {
   menu_init();
 }
 
-static void x_process_create_notify(const XCreateWindowEvent &cwe) {
+void x_process_create_notify(const XCreateWindowEvent &cwe) {
   window *new_window;
 
   if (current_session.internal_x_windows.count(cwe.window)) return;
@@ -335,7 +319,7 @@ static void x_process_create_notify(const XCreateWindowEvent &cwe) {
   current_session.unpositioned_windows.push_back(new_window);
 }
 
-static pid_t launch_program(const char *command, Time when) {
+pid_t launch_program(const char *command, Time when) {
   char *args[4];
   char buf[32];
   pid_t pid;
@@ -367,7 +351,7 @@ static pid_t launch_program(const char *command, Time when) {
   _exit(EXIT_FAILURE);
 }
 
-static void x_paint_dirty_windows(void) {
+void x_paint_dirty_windows() {
   for (auto &screen : current_session.screens) {
     XRenderColor black;
     bool draw_menu;
@@ -431,8 +415,8 @@ static void x_paint_dirty_windows(void) {
   current_session.repaint_all = false;
 }
 
-static void update_focus(unsigned int screen_index,
-                         unsigned int workspace_index, Time x_event_time) {
+void update_focus(unsigned int screen_index,
+                  unsigned int workspace_index, Time x_event_time) {
   Window focus_window;
   screen *scr;
   bool hide_and_show;
@@ -459,7 +443,7 @@ static void update_focus(unsigned int screen_index,
   XSetInputFocus(x_display, focus_window, RevertToPointerRoot, x_event_time);
 }
 
-static void wait_for_dead_children(void) {
+void wait_for_dead_children() {
   int status;
   pid_t child;
 
@@ -467,9 +451,7 @@ static void wait_for_dead_children(void) {
     children.erase(child);
 }
 
-static void x_process_events(void) {
-  XEvent event;
-
+void x_process_events() {
   current_session.repaint_all = true;
 
   x_paint_dirty_windows();
@@ -477,6 +459,7 @@ static void x_process_events(void) {
   for (;;) {
     wait_for_dead_children();
 
+    XEvent event;
     XNextEvent(x_display, &event);
 
     if (XFilterEvent(&event, event.xkey.window)) continue;
@@ -853,19 +836,21 @@ static void x_process_events(void) {
   }
 }
 
-static void reload_config(void) {
+void reload_config() {
   if (config) tree_destroy(config);
 
   config = tree_load_cfg(".cantera/config");
 }
 
-static void sighandler(int signal) {
+void sighandler(int signal) {
   switch (signal) {
     case SIGUSR1:
       reload_config();
       break;
   }
 }
+
+}  // namespace
 
 int main(int argc, char **argv) {
   char *home;
@@ -892,133 +877,6 @@ void rect::union_rect(struct rect &other) {
   if (y > other.y) y = other.y;
   if (x + width < other.x + other.width) width = (other.x + other.width) - x;
   if (y + height < other.y + other.width) height = (other.y + other.width) - y;
-}
-
-window::window() {
-  memset(this, 0, sizeof(*this));
-
-  type = window_type_unknown;
-}
-
-window::~window() {}
-
-void window::get_hints() {
-  if (type != window_type_unknown) return;
-
-  XSync(x_display, False);
-  XSetErrorHandler(x_error_discarder);
-
-  Atom atom_type;
-  int format;
-  unsigned long nitems;
-  unsigned long bytes_after;
-  unsigned long *prop;
-
-  /* XXX: This code has not been verified.  Also, we should use atom_type for
-   * something  */
-  if (Success !=
-      XGetWindowProperty(x_display, x_window, xa::net_wm_window_type, 0, 1024,
-                         False, XA_ATOM, &atom_type, &format, &nitems,
-                         &bytes_after, (unsigned char **)&prop))
-    type = window_type_normal;
-  else if (!prop)
-    type = window_type_normal;
-  else if (*prop == xa::net_wm_window_type_desktop)
-    type = window_type_desktop;
-  else if (*prop == xa::net_wm_window_type_dock)
-    type = window_type_dock;
-  else if (*prop == xa::net_wm_window_type_toolbar)
-    type = window_type_toolbar;
-  else if (*prop == xa::net_wm_window_type_menu)
-    type = window_type_menu;
-  else if (*prop == xa::net_wm_window_type_utility)
-    type = window_type_utility;
-  else if (*prop == xa::net_wm_window_type_splash)
-    type = window_type_splash;
-  else if (*prop == xa::net_wm_window_type_dialog)
-    type = window_type_dialog;
-  else /* if (*prop == xa::net_wm_window_type_normal) */
-    type = window_type_normal;
-
-  XFree(prop);
-
-  XGetTransientForHint(x_display, x_window, &x_transient_for);
-
-  XSync(x_display, False);
-  XSetErrorHandler(x_error_handler);
-
-  if (x_transient_for && type == window_type_normal)
-    type = window_type_dialog;
-}
-
-void window::constrain_size() {}
-
-void window::init_composite() {
-  if (x_picture) {
-    assert(x_damage);
-
-    return;
-  }
-
-  if (!override_redirect) {
-    XWindowAttributes attr;
-    XRenderPictFormat *format;
-    XRenderPictureAttributes picture_attributes;
-
-    XGetWindowAttributes(x_display, x_window, &attr);
-
-    format = XRenderFindVisualFormat(x_display, attr.visual);
-
-    if (!format) errx(EXIT_FAILURE, "Unable to find visual format for window");
-
-    memset(&picture_attributes, 0, sizeof(picture_attributes));
-    picture_attributes.subwindow_mode = IncludeInferiors;
-
-    x_picture = XRenderCreatePicture(x_display, x_window, format,
-                                     CPSubwindowMode, &picture_attributes);
-  }
-
-  x_damage = XDamageCreate(x_display, x_window, XDamageReportNonEmpty);
-
-  fprintf(stderr, "Window %08lx has picture %08lx and damage %08lx\n", x_window,
-          x_picture, x_damage);
-}
-
-void window::reset_composite() {
-  /* XXX: It seems these are always already destroyed? */
-
-  if (x_damage) {
-    XDamageDestroy(x_display, x_damage);
-
-    x_damage = 0;
-  }
-
-  if (x_picture) {
-    XRenderFreePicture(x_display, x_picture);
-
-    x_picture = 0;
-  }
-}
-
-void window::show() {
-  XWindowChanges wc;
-
-  wc.x = position.x;
-  wc.y = position.y;
-  wc.width = position.width;
-  wc.height = position.height;
-
-  /* XXX: Quench this if the position is not dirty */
-  XConfigureWindow(x_display, x_window, CWX | CWY | CWWidth | CWHeight, &wc);
-}
-
-void window::hide() {
-  XWindowChanges wc;
-
-  wc.x = current_session.desktop_geometry.x +
-         current_session.desktop_geometry.width;
-
-  XConfigureWindow(x_display, x_window, CWX, &wc);
 }
 
 screen::screen() : x_damage_region(0), active_workspace(0) {}

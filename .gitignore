@@ -9,6 +9,7 @@ Makefile
 Makefile.in
 aclocal.m4
 cantera-wm
+compile
 configure
 depcomp
 install-sh

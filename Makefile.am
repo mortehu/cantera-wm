@@ -11,6 +11,7 @@ cantera_wm_SOURCES = \
   main.cc \
   menu.cc \
   io.c io.h \
+  session.cc \
   tree.c tree.h \
   window.cc \
   xa.cc xa.h

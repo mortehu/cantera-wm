@@ -31,23 +31,25 @@ static const XTransform xform_identity = {
   { { 0x10000, 0, 0 }, { 0, 0x10000, 0 }, { 0, 0, 0x10000 } }
 };
 
-void menu_thumbnail_dimensions(const screen& scr, unsigned int* width,
-                               unsigned int* height, unsigned int* margin);
+void menu_thumbnail_dimensions(const cantera_wm::Screen& scr,
+                               unsigned int* width, unsigned int* height,
+                               unsigned int* margin);
 
-void menu_draw_desktops(const struct screen& scr);
+void menu_draw_desktops(const cantera_wm::Screen& scr);
 
 void menu_init(void) {
-  for (auto& screen : current_session.screens) {
+  for (size_t i = 0; i < current_session.ScreenCount(); ++i) {
+    cantera_wm::Screen* screen = current_session.GetScreen(i);
     unsigned int previous_width, previous_height;
     unsigned int current_width, current_height;
     unsigned int thumb_width, thumb_height;
     XTransform xform_scaled;
     Picture temp_picture;
 
-    menu_thumbnail_dimensions(screen, &thumb_width, &thumb_height, NULL);
+    menu_thumbnail_dimensions(*screen, &thumb_width, &thumb_height, NULL);
 
-    previous_width = screen.geometry.width;
-    previous_height = screen.geometry.height;
+    previous_width = screen->geometry.width;
+    previous_height = screen->geometry.height;
 
     for (;;) {
       Pixmap temp_pixmap;
@@ -63,8 +65,8 @@ void menu_init(void) {
       xform_scaled.matrix[2][2] =
           XDoubleToFixed((double) current_width / previous_width);
 
-      if (screen.resize_buffers.empty())
-        screen.initial_transform = xform_scaled;
+      if (screen->resize_buffers.empty())
+        screen->initial_transform = xform_scaled;
       else
         XRenderSetPictureTransform(x_display, temp_picture, &xform_scaled);
 
@@ -81,7 +83,7 @@ void menu_init(void) {
 
       XFreePixmap(x_display, temp_pixmap);
 
-      screen.resize_buffers.push_back(temp_picture);
+      screen->resize_buffers.push_back(temp_picture);
 
       previous_width = current_width;
       previous_height = current_height;
@@ -89,8 +91,9 @@ void menu_init(void) {
   }
 }
 
-void menu_thumbnail_dimensions(const screen& scr, unsigned int* width,
-                               unsigned int* height, unsigned int* margin) {
+void menu_thumbnail_dimensions(const cantera_wm::Screen& scr,
+                               unsigned int* width, unsigned int* height,
+                               unsigned int* margin) {
   unsigned int tmp_margin, tmp_width;
 
   tmp_width = scr.geometry.width / 14;
@@ -101,7 +104,7 @@ void menu_thumbnail_dimensions(const screen& scr, unsigned int* width,
   if (margin) *margin = tmp_margin;
 }
 
-void menu_draw(const struct screen& scr) {
+void menu_draw(const cantera_wm::Screen& scr) {
   unsigned int thumb_width, thumb_height, thumb_margin;
 
   menu_thumbnail_dimensions(scr, &thumb_width, &thumb_height, &thumb_margin);
@@ -109,7 +112,7 @@ void menu_draw(const struct screen& scr) {
   menu_draw_desktops(scr);
 }
 
-void menu_draw_desktops(const struct screen& scr) {
+void menu_draw_desktops(const cantera_wm::Screen& scr) {
   unsigned int thumb_width, thumb_height, thumb_margin;
   size_t i;
   int x = 0, y;

@@ -6,26 +6,27 @@
 #include <cstring>
 
 #include <err.h>
+#include <X11/Xatom.h>
 
 #include "xa.h"
 
 namespace {
 
-int x_error_discarder(Display *display, XErrorEvent *error) { return 0; }
+int x_error_discarder(Display* display, XErrorEvent* error) { return 0; }
 
 }  // namespace
 
 namespace cantera_wm {
 
-window::window() {
+Window::Window() {
   memset(this, 0, sizeof(*this));
 
   type = window_type_unknown;
 }
 
-window::~window() {}
+Window::~Window() {}
 
-void window::get_hints() {
+void Window::get_hints() {
   if (type != window_type_unknown) return;
 
   XSync(x_display, False);
@@ -35,14 +36,14 @@ void window::get_hints() {
   int format;
   unsigned long nitems;
   unsigned long bytes_after;
-  unsigned long *prop;
+  unsigned long* prop;
 
   /* XXX: This code has not been verified.  Also, we should use atom_type for
    * something  */
   if (Success !=
       XGetWindowProperty(x_display, x_window, xa::net_wm_window_type, 0, 1024,
                          False, XA_ATOM, &atom_type, &format, &nitems,
-                         &bytes_after, (unsigned char **)&prop))
+                         &bytes_after, (unsigned char**)&prop))
     type = window_type_normal;
   else if (!prop)
     type = window_type_normal;
@@ -70,13 +71,12 @@ void window::get_hints() {
   XSync(x_display, False);
   XSetErrorHandler(old_error_handler);
 
-  if (x_transient_for && type == window_type_normal)
-    type = window_type_dialog;
+  if (x_transient_for && type == window_type_normal) type = window_type_dialog;
 }
 
-void window::constrain_size() {}
+void Window::constrain_size() {}
 
-void window::init_composite() {
+void Window::init_composite() {
   if (x_picture) {
     assert(x_damage);
 
@@ -85,7 +85,7 @@ void window::init_composite() {
 
   if (!override_redirect) {
     XWindowAttributes attr;
-    XRenderPictFormat *format;
+    XRenderPictFormat* format;
     XRenderPictureAttributes picture_attributes;
 
     XGetWindowAttributes(x_display, x_window, &attr);
@@ -107,7 +107,7 @@ void window::init_composite() {
           x_picture, x_damage);
 }
 
-void window::reset_composite() {
+void Window::reset_composite() {
   /* XXX: It seems these are always already destroyed? */
 
   if (x_damage) {
@@ -123,7 +123,7 @@ void window::reset_composite() {
   }
 }
 
-void window::show() {
+void Window::show() {
   XWindowChanges wc;
 
   wc.x = position.x;
@@ -135,13 +135,11 @@ void window::show() {
   XConfigureWindow(x_display, x_window, CWX | CWY | CWWidth | CWHeight, &wc);
 }
 
-void window::hide() {
+void Window::hide() {
   XWindowChanges wc;
-
-  wc.x = current_session.desktop_geometry.x +
-         current_session.desktop_geometry.width;
+  wc.x = current_session.Right();
 
   XConfigureWindow(x_display, x_window, CWX, &wc);
 }
 
-}
+}  // namespace cantera_wm

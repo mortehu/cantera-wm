@@ -2,7 +2,6 @@
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
-
 #include <set>
 
 #include <err.h>
@@ -27,23 +26,47 @@ namespace cantera_wm {
 
 const size_t kWorkspaceCount = 24;
 
-Display *x_display;
+Display* x_display;
 int x_screen_index;
-Screen *x_screen;
-Visual *x_visual;
-XRenderPictFormat *x_render_visual_format;
-XVisualInfo *x_visual_info;
+::Screen* x_screen;
+Visual* x_visual;
+XRenderPictFormat* x_render_visual_format;
+XVisualInfo* x_visual_info;
 int x_visual_info_count;
-Window x_root_window;
+::Window x_root_window;
 
 XIM x_im;
 XIC x_ic;
 int x_damage_eventbase;
 int x_damage_errorbase;
 
-session current_session;
+Session current_session;
 
 std::set<pid_t> children;
+
+void Screen::update_focus(unsigned int workspace_index, Time x_event_time) {
+  ::Window focus_window;
+  bool hide_and_show;
+
+  hide_and_show = (active_workspace != workspace_index);
+
+  focus_window = x_root_window;
+
+  for (cantera_wm::Window* window : workspaces[workspace_index]) {
+    if (hide_and_show) window->show();
+
+    focus_window = window->x_window;
+  }
+
+  if (hide_and_show) {
+    for (auto window : workspaces[active_workspace])
+      window->hide();
+  }
+
+  active_workspace = workspace_index;
+
+  XSetInputFocus(x_display, focus_window, RevertToPointerRoot, x_event_time);
+}
 
 }  // namespace cantera_wm
 
@@ -56,13 +79,11 @@ bool mod1_pressed;
 bool super_pressed;
 bool shift_pressed;
 
-int (*x_default_error_handler)(Display *, XErrorEvent *error);
+int (*x_default_error_handler)(Display*, XErrorEvent* error);
 
-struct tree *config;
+struct tree* config;
 
-bool showing_menu;
-
-int x_error_handler(Display *display, XErrorEvent *error) {
+int x_error_handler(Display* display, XErrorEvent* error) {
   int result = 0;
 
   if (error->error_code == BadAccess &&
@@ -100,7 +121,7 @@ void x_grab_keys() {
   for (i = 0; i < sizeof(global_modifiers) / sizeof(global_modifiers[0]); ++i) {
     gmod = global_modifiers[i];
 
-    for (f = 0; f < current_session.screens.size(); ++f)
+    for (f = 0; f < current_session.ScreenCount(); ++f)
       x_grab_key(XK_1 + f, Mod4Mask | gmod);
 
     x_grab_key(XK_Left, ControlMask | Mod1Mask | gmod);
@@ -120,7 +141,7 @@ void x_grab_keys() {
 
 void x_connect() {
   int dummy, major, minor;
-  char *c;
+  char* c;
 
   if (!(x_display = XOpenDisplay(0)))
     errx(EXIT_FAILURE, "Failed to open default X11 display");
@@ -181,43 +202,35 @@ void x_connect() {
 
   if (XineramaQueryExtension(x_display, &dummy, &dummy) &&
       XineramaIsActive(x_display)) {
-    XineramaScreenInfo *xinerama_screens;
+    XineramaScreenInfo* xinerama_screens;
     int i, screen_count;
 
     xinerama_screens = XineramaQueryScreens(x_display, &screen_count);
+    assert(screen_count >= 1);
 
     for (i = 0; i < screen_count; ++i) {
-      screen new_screen;
-
+      cantera_wm::Screen new_screen;
       new_screen.geometry.x = xinerama_screens[i].x_org;
       new_screen.geometry.y = xinerama_screens[i].y_org;
       new_screen.geometry.width = xinerama_screens[i].width;
       new_screen.geometry.height = xinerama_screens[i].height;
 
-      current_session.screens.push_back(new_screen);
-
-      if (!i)
-        current_session.desktop_geometry = new_screen.geometry;
-      else
-        current_session.desktop_geometry.union_rect(new_screen.geometry);
+      current_session.AddScreen(new_screen);
     }
 
     XFree(xinerama_screens);
   } else /* Xinerama not active -> assume one big screen */
       {
     XWindowAttributes root_window_attr;
-    screen new_screen;
-
     XGetWindowAttributes(x_display, x_root_window, &root_window_attr);
 
+    cantera_wm::Screen new_screen;
     new_screen.geometry.x = 0;
     new_screen.geometry.y = 0;
     new_screen.geometry.width = root_window_attr.width;
     new_screen.geometry.height = root_window_attr.height;
 
-    current_session.screens.push_back(new_screen);
-
-    current_session.desktop_geometry = new_screen.geometry;
+    current_session.AddScreen(new_screen);
   }
 
   /*** Compositing ***/
@@ -252,38 +265,39 @@ void x_connect() {
   XCompositeRedirectSubwindows(x_display, x_root_window,
                                CompositeRedirectManual);
 
-  for (auto &screen : current_session.screens) {
-    Pixmap pixmap;
+  for (size_t i = 0; i < current_session.ScreenCount(); ++i) {
+    cantera_wm::Screen* screen = current_session.GetScreen(i);
 
-    screen.x_window = XCreateWindow(
-        x_display, x_root_window, screen.geometry.x, screen.geometry.y,
-        screen.geometry.width, screen.geometry.height, 0, /* Border */
+    screen->x_window = XCreateWindow(
+        x_display, x_root_window, screen->geometry.x, screen->geometry.y,
+        screen->geometry.width, screen->geometry.height, 0, /* Border */
         x_visual_info->depth, InputOutput, x_visual,
         CWOverrideRedirect | CWColormap | CWEventMask, &window_attr);
 
-    current_session.internal_x_windows.insert(screen.x_window);
+    current_session.AddInternalXWindow(screen->x_window);
 
-    XCompositeUnredirectWindow(x_display, screen.x_window,
+    XCompositeUnredirectWindow(x_display, screen->x_window,
                                CompositeRedirectManual);
 
-    XMapWindow(x_display, screen.x_window);
+    XMapWindow(x_display, screen->x_window);
 
-    if (!(screen.x_picture = XRenderCreatePicture(
-            x_display, screen.x_window, x_render_visual_format, CPSubwindowMode,
-            &pa)))
+    if (!(screen->x_picture = XRenderCreatePicture(x_display, screen->x_window,
+                                                   x_render_visual_format,
+                                                   CPSubwindowMode, &pa)))
       errx(EXIT_FAILURE, "Failed to create picture for screen window");
 
-    pixmap = XCreatePixmap(x_display, screen.x_window, screen.geometry.width,
-                           screen.geometry.height, x_visual_info->depth);
+    Pixmap pixmap;
+    pixmap = XCreatePixmap(x_display, screen->x_window, screen->geometry.width,
+                           screen->geometry.height, x_visual_info->depth);
 
-    if (!(screen.x_buffer = XRenderCreatePicture(x_display, pixmap,
-                                                 x_render_visual_format, 0, 0)))
+    if (!(screen->x_buffer = XRenderCreatePicture(
+            x_display, pixmap, x_render_visual_format, 0, 0)))
       errx(EXIT_FAILURE, "Failed to create back buffer for screen");
 
     XFreePixmap(x_display, pixmap);
 
     fprintf(stderr, "Screen has window %08lx has buffer %08lx\n",
-            screen.x_window, screen.x_buffer);
+            screen->x_window, screen->x_buffer);
 
     /* Only the first screen window gets key events */
     window_attr.event_mask &= ~(KeyPressMask | KeyReleaseMask);
@@ -296,43 +310,20 @@ void x_connect() {
   menu_init();
 }
 
-void x_process_create_notify(const XCreateWindowEvent &cwe) {
-  window *new_window;
-
-  if (current_session.internal_x_windows.count(cwe.window)) return;
-
-  new_window = new window;
-
-  new_window->x_window = cwe.window;
-  new_window->position.x = cwe.x;
-  new_window->position.y = cwe.y;
-  new_window->position.width = cwe.width;
-  new_window->position.height = cwe.height;
-
-  new_window->real_position = new_window->position;
-
-  if (cwe.override_redirect) {
-    XCompositeUnredirectWindow(x_display, cwe.window, CompositeRedirectManual);
-    new_window->override_redirect = true;
-  }
-
-  current_session.unpositioned_windows.push_back(new_window);
-}
-
-pid_t launch_program(const char *command, Time when) {
-  char *args[4];
+pid_t launch_program(const char* command, Time when) {
+  char* args[4];
   char buf[32];
   pid_t pid;
 
-  sprintf(buf, "%d", current_session.active_screen);
+  sprintf(buf, "%zu", current_session.ActiveScreenIndex());
   setenv("CURRENT_SCREEN", buf, 1);
 
-  args[0] = (char *)"/bin/sh";
-  args[1] = (char *)"-c";
+  args[0] = (char*)"/bin/sh";
+  args[1] = (char*)"-c";
 
   if (-1 == asprintf(&args[2], "exec %s", command)) return -1;
 
-  args[3] = (char *)NULL;
+  args[3] = (char*)NULL;
 
   /* Can't use vfork() because we want to call setsid */
 
@@ -351,98 +342,6 @@ pid_t launch_program(const char *command, Time when) {
   _exit(EXIT_FAILURE);
 }
 
-void x_paint_dirty_windows() {
-  for (auto &screen : current_session.screens) {
-    XRenderColor black;
-    bool draw_menu;
-
-    draw_menu =
-        showing_menu || screen.workspaces[screen.active_workspace].empty();
-
-    if (draw_menu || current_session.repaint_all)
-      XFixesSetPictureClipRegion(x_display, screen.x_buffer, 0, 0, None);
-    else {
-      if (!screen.x_damage_region) continue;
-
-#if 0
-      /* XXX: Buggy on dual monitors, except for the monitor at offset 0,0 */
-
-      XFixesSetPictureClipRegion(x_display, screen.x_buffer, 0, 0,
-                                 screen.x_damage_region);
-#endif
-    }
-
-    black.red = 0x0000;
-    black.green = 0x0000;
-    black.blue = 0x0000;
-    black.alpha = 0xffff;
-
-    XRenderFillRectangle(x_display, PictOpSrc, screen.x_buffer, &black, 0, 0,
-                         screen.geometry.width, screen.geometry.height);
-
-    for (auto &window : screen.ancillary_windows) {
-      if (!window->x_picture) continue;
-
-      XRenderComposite(
-          x_display, PictOpSrc, window->x_picture, None, screen.x_buffer, 0, 0,
-          0, 0, window->real_position.x - screen.geometry.x,
-          window->real_position.y - screen.geometry.y,
-          window->real_position.width, window->real_position.height);
-    }
-
-    for (auto &window : screen.workspaces[screen.active_workspace]) {
-      if (!window->x_picture) continue;
-
-      XRenderComposite(
-          x_display, PictOpSrc, window->x_picture, None, screen.x_buffer, 0, 0,
-          0, 0, window->real_position.x - screen.geometry.x,
-          window->real_position.y - screen.geometry.y,
-          window->real_position.width, window->real_position.height);
-    }
-
-    if (draw_menu) menu_draw(screen);
-
-    XRenderComposite(x_display, PictOpSrc, screen.x_buffer, None,
-                     screen.x_picture, 0, 0, 0, 0, 0, 0, screen.geometry.width,
-                     screen.geometry.height);
-
-    if (screen.x_damage_region) {
-      XFixesDestroyRegion(x_display, screen.x_damage_region);
-      screen.x_damage_region = 0;
-    }
-  }
-
-  current_session.repaint_all = false;
-}
-
-void update_focus(unsigned int screen_index,
-                  unsigned int workspace_index, Time x_event_time) {
-  Window focus_window;
-  screen *scr;
-  bool hide_and_show;
-
-  scr = &current_session.screens[screen_index];
-
-  hide_and_show = (scr->active_workspace != workspace_index);
-
-  focus_window = x_root_window;
-
-  for (auto window : scr->workspaces[workspace_index]) {
-    if (hide_and_show) window->show();
-
-    focus_window = window->x_window;
-  }
-
-  if (hide_and_show) {
-    for (auto window : scr->workspaces[scr->active_workspace])
-      window->hide();
-  }
-
-  scr->active_workspace = workspace_index;
-
-  XSetInputFocus(x_display, focus_window, RevertToPointerRoot, x_event_time);
-}
-
 void wait_for_dead_children() {
   int status;
   pid_t child;
@@ -452,9 +351,8 @@ void wait_for_dead_children() {
 }
 
 void x_process_events() {
-  current_session.repaint_all = true;
-
-  x_paint_dirty_windows();
+  current_session.SetDirty();
+  current_session.Paint();
 
   for (;;) {
     wait_for_dead_children();
@@ -491,7 +389,7 @@ void x_process_events() {
 
         if (key_sym >= 'a' && key_sym <= 'z' && super_pressed) {
           char key[10];
-          const char *command;
+          const char* command;
 
           sprintf(key, "hotkey.%c", (int) key_sym);
 
@@ -500,31 +398,31 @@ void x_process_events() {
         } else if ((super_pressed ^ ctrl_pressed) && key_sym >= XK_F1 &&
                    key_sym <= XK_F12) {
           unsigned int new_active_workspace;
-          screen *scr;
+          cantera_wm::Screen* scr;
 
           new_active_workspace = key_sym - XK_F1;
 
           if (super_pressed) new_active_workspace += 12;
 
-          update_focus(current_session.active_screen, new_active_workspace,
-                       event.xkey.time);
+          current_session.ActiveScreen()
+              ->update_focus(new_active_workspace, event.xkey.time);
 
-          scr = &current_session.screens[current_session.active_screen];
+          scr = current_session.ActiveScreen();
           scr->navigation_stack.clear();
           scr->navigation_stack.push_back(new_active_workspace);
         } else if (super_pressed && key_sym >= XK_1 &&
-                   key_sym < XK_1 + current_session.screens.size()) {
+                   key_sym < XK_1 + current_session.ScreenCount()) {
           unsigned int new_screen;
 
           new_screen = key_sym - XK_1;
 
-          current_session.active_screen = new_screen;
-          update_focus(new_screen,
-                       current_session.screens[new_screen].active_workspace,
-                       event.xkey.time);
+          current_session.SetActiveScreen(new_screen);
+          current_session.ActiveScreen()
+              ->update_focus(current_session.ActiveScreen()->active_workspace,
+                             event.xkey.time);
         } else if (super_pressed && (mod1_pressed ^ ctrl_pressed)) {
           int direction = 0;
-          showing_menu = true;
+          current_session.ShowMenu();
           switch (key_sym) {
             case XK_Up:
               direction = -12;
@@ -540,8 +438,7 @@ void x_process_events() {
               break;
           }
           if (direction) {
-            screen *scr =
-                &current_session.screens[current_session.active_screen];
+            cantera_wm::Screen* scr = current_session.ActiveScreen();
             unsigned int new_workspace =
                 (kWorkspaceCount + scr->active_workspace + direction) %
                 kWorkspaceCount;
@@ -553,8 +450,8 @@ void x_process_events() {
                 scr->navigation_stack.back() = new_workspace;
               scr->active_workspace = new_workspace;
             } else {
-              update_focus(current_session.active_screen, new_workspace,
-                           event.xkey.time);
+              current_session.ActiveScreen()
+                  ->update_focus(new_workspace, event.xkey.time);
 
               scr->navigation_stack.clear();
               scr->navigation_stack.push_back(new_workspace);
@@ -562,10 +459,10 @@ void x_process_events() {
           }
         } else if (mod1_pressed && key_sym == XK_F4) {
           XClientMessageEvent cme;
-          screen *scr;
-          window *w;
+          cantera_wm::Screen* scr;
+          cantera_wm::Window* w;
 
-          scr = &current_session.screens[current_session.active_screen];
+          scr = current_session.ActiveScreen();
 
           if (scr->workspaces[scr->active_workspace].empty()) break;
 
@@ -580,13 +477,11 @@ void x_process_events() {
           cme.data.l[0] = xa::wm_delete_window;
           cme.data.l[1] = event.xkey.time;
 
-          XSendEvent(x_display, w->x_window, False, 0, (XEvent *)&cme);
+          XSendEvent(x_display, w->x_window, False, 0, (XEvent*)&cme);
         }
-      }
 
-        current_session.repaint_all = true;
-
-        break;
+        current_session.SetDirty();
+      } break;
 
       case KeyRelease: {
         KeySym key_sym;
@@ -606,12 +501,10 @@ void x_process_events() {
           mod1_pressed = false;
 
         if (!super_pressed || !(mod1_pressed ^ ctrl_pressed))
-          showing_menu = false;
-      }
+          current_session.HideMenu();
 
-        current_session.repaint_all = true;
-
-        break;
+        current_session.SetDirty();
+      } break;
 
       case CreateNotify:
 
@@ -622,7 +515,7 @@ void x_process_events() {
             event.xcreatewindow.width, event.xcreatewindow.height,
             event.xcreatewindow.parent, x_root_window);
 
-        x_process_create_notify(event.xcreatewindow);
+        current_session.ProcessXCreateWindowEvent(event.xcreatewindow);
 
         break;
 
@@ -633,9 +526,9 @@ void x_process_events() {
         break;
 
       case MapRequest: {
-        screen *scr;
-        workspace *ws;
-        window *w;
+        cantera_wm::Screen* scr;
+        workspace* ws;
+        cantera_wm::Window* w;
 
         bool give_focus = true;
 
@@ -644,7 +537,7 @@ void x_process_events() {
 
         w->get_hints();
 
-        if (!scr) scr = &current_session.screens[current_session.active_screen];
+        if (!scr) scr = current_session.ActiveScreen();
 
         if (w->type == window_type_desktop) {
           current_session.move_window(w, scr, NULL);
@@ -674,7 +567,7 @@ void x_process_events() {
 
               scr->active_workspace = workspace;
 
-              auto &navstack = scr->navigation_stack;
+              auto& navstack = scr->navigation_stack;
 
               navstack.erase(
                   std::remove(navstack.begin(), navstack.end(), workspace),
@@ -713,29 +606,24 @@ void x_process_events() {
       } break;
 
       case MapNotify: {
-        window *w;
+        cantera_wm::Window* w;
 
         fprintf(stderr, "Window %08lx was mapped\n", event.xmap.window);
 
-        if (!(w = current_session.find_x_window(event.xmap.window))) {
-          if (current_session.internal_x_windows.count(event.xmap.window))
-            break;
-
-          break;
-        }
+        if (!(w = current_session.find_x_window(event.xmap.window))) break;
 
         w->init_composite();
       } break;
 
       case UnmapNotify: {
         XEvent destroy_event;
-        screen *scr;
-        workspace *ws;
-        window *w;
+        cantera_wm::Screen* scr;
+        workspace* ws;
+        cantera_wm::Window* w;
 
         fprintf(stderr, "Window %08lx was unmapped\n",
                 destroy_event.xdestroywindow.window);
-        current_session.repaint_all = true;
+        current_session.SetDirty();
 
         /* Window is probably destroyed, so we check that first */
         while (XCheckTypedWindowEvent(x_display, x_root_window, DestroyNotify,
@@ -750,9 +638,9 @@ void x_process_events() {
 
       case ConfigureNotify:
 
-        current_session.repaint_all = true;
+        current_session.SetDirty();
 
-        if (window *w =
+        if (cantera_wm::Window* w =
                 current_session.find_x_window(event.xconfigure.window)) {
           w->real_position.x = event.xconfigure.x;
           w->real_position.y = event.xconfigure.y;
@@ -763,8 +651,8 @@ void x_process_events() {
         break;
 
       case ConfigureRequest: {
-        const XConfigureRequestEvent &cre = event.xconfigurerequest;
-        window *w;
+        const XConfigureRequestEvent& cre = event.xconfigurerequest;
+        cantera_wm::Window* w;
 
         if (!(w = current_session.find_x_window(cre.window))) break;
 
@@ -797,9 +685,9 @@ void x_process_events() {
       default:
 
         if (event.type == x_damage_eventbase + XDamageNotify) {
-          const XDamageNotifyEvent &dne = *(XDamageNotifyEvent *)&event;
-          screen *scr;
-          window *w;
+          const XDamageNotifyEvent& dne = *(XDamageNotifyEvent*)&event;
+          cantera_wm::Screen* scr;
+          cantera_wm::Window* w;
 
           if (NULL !=
               (w = current_session.find_x_window(dne.drawable, NULL, &scr))) {
@@ -825,14 +713,15 @@ void x_process_events() {
                 XDamageSubtract(x_display, dne.damage, None,
                                 scr->x_damage_region);
             }
-          } else
+          } else {
             XDamageSubtract(x_display, dne.damage, None, None);
+          }
         }
     }
 
     if (XPending(x_display)) continue;
 
-    x_paint_dirty_windows();
+    current_session.Paint();
   }
 }
 
@@ -852,11 +741,10 @@ void sighandler(int signal) {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-  char *home;
-
+int main(int argc, char** argv) {
   signal(SIGUSR1, sighandler);
 
+  char* home;
   if (!(home = getenv("HOME")))
     errx(EXIT_FAILURE, "Missing HOME environment variable");
 
@@ -870,174 +758,4 @@ int main(int argc, char **argv) {
   x_connect();
 
   x_process_events();
-}
-
-void rect::union_rect(struct rect &other) {
-  if (x > other.x) x = other.x;
-  if (y > other.y) y = other.y;
-  if (x + width < other.x + other.width) width = (other.x + other.width) - x;
-  if (y + height < other.y + other.width) height = (other.y + other.width) - y;
-}
-
-screen::screen() : x_damage_region(0), active_workspace(0) {}
-
-session::session() : active_screen(0) {}
-
-screen *session::find_screen_for_window(Window x_window) {
-  for (auto &screen : screens) {
-    if (screen.x_window == x_window) return &screen;
-  }
-
-  return NULL;
-}
-
-window *session::find_x_window(Window x_window, workspace **workspace_ret,
-                               screen **screen_ret) {
-  for (auto &window : unpositioned_windows) {
-    if (window->x_window == x_window) {
-      if (workspace_ret) *workspace_ret = NULL;
-
-      if (screen_ret) *screen_ret = NULL;
-
-      return window;
-    }
-  }
-
-  for (auto &screen : screens) {
-    for (auto &window : screen.ancillary_windows) {
-      if (window->x_window == x_window) {
-        if (workspace_ret) *workspace_ret = NULL;
-
-        if (screen_ret) *screen_ret = &screen;
-
-        return window;
-      }
-    }
-
-    for (auto &workspace : screen.workspaces) {
-      for (auto &window : workspace) {
-        if (window->x_window == x_window) {
-          if (workspace_ret) *workspace_ret = &workspace;
-
-          if (screen_ret) *screen_ret = &screen;
-
-          return window;
-        }
-      }
-    }
-  }
-
-  return NULL;
-}
-
-void session::remove_x_window(Window x_window) {
-  fprintf(stderr, "Window %08lx was destroyed\n", x_window);
-
-  current_session.repaint_all = true;
-
-  auto predicate = [x_window](window * window)->bool {
-    return window->x_window == x_window;
-  };
-
-  auto i = std::find_if(unpositioned_windows.begin(),
-                        unpositioned_windows.end(), predicate);
-
-  if (i != unpositioned_windows.end()) {
-    fprintf(stderr, " -> It was unpositioned\n");
-    delete *i;
-
-    unpositioned_windows.erase(i);
-
-    return;
-  }
-
-  unsigned int screen_index = 0;
-
-  for (auto &screen : screens) {
-    auto i = std::find_if(screen.ancillary_windows.begin(),
-                          screen.ancillary_windows.end(), predicate);
-
-    if (i != screen.ancillary_windows.end()) {
-      fprintf(stderr, " -> It was an ancillary window\n");
-      delete *i;
-
-      screen.ancillary_windows.erase(i);
-
-      return;
-    }
-
-    unsigned int workspace_index = 0;
-
-    for (auto &workspace : screen.workspaces) {
-      auto i = std::find_if(workspace.begin(), workspace.end(), predicate);
-
-      if (i != workspace.end()) {
-        fprintf(stderr, " -> It was in a workspace\n");
-        delete *i;
-
-        workspace.erase(i);
-
-        if (workspace.empty()) {
-          auto &navstack = screen.navigation_stack;
-
-          navstack.erase(
-              std::remove(navstack.begin(), navstack.end(), workspace_index),
-              navstack.end());
-
-          if (screen.active_workspace == workspace_index && !navstack.empty()) {
-            update_focus(screen_index, navstack.back(), CurrentTime);
-          }
-        }
-
-        return;
-      }
-
-      ++workspace_index;
-    }
-
-    ++screen_index;
-  }
-}
-
-void session::move_window(window *w, screen *scr, workspace *ws) {
-  /* XXX: Eliminate code duplication from remove_x_window */
-
-  auto predicate = [w](window * arg)->bool { return w == arg; };
-
-  auto i = std::find_if(unpositioned_windows.begin(),
-                        unpositioned_windows.end(), predicate);
-
-  if (i != unpositioned_windows.end()) {
-    unpositioned_windows.erase(i);
-
-    goto found;
-  }
-
-  for (auto &screen : screens) {
-    auto i = std::find_if(screen.ancillary_windows.begin(),
-                          screen.ancillary_windows.end(), predicate);
-
-    if (i != screen.ancillary_windows.end()) {
-      screen.ancillary_windows.erase(i);
-
-      goto found;
-    }
-
-    for (auto &workspace : screen.workspaces) {
-      auto i = std::find_if(workspace.begin(), workspace.end(), predicate);
-
-      if (i != workspace.end()) {
-        workspace.erase(i);
-
-        goto found;
-      }
-    }
-  }
-
-found:
-
-  if (ws)
-    ws->push_back(w);
-  else
-    scr->ancillary_windows.push_back(w);
 }

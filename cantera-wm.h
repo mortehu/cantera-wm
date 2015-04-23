@@ -35,18 +35,6 @@ class Session;
 
 extern Session current_session;
 
-enum window_type {
-  window_type_unknown,
-  window_type_desktop,
-  window_type_dock,
-  window_type_toolbar,
-  window_type_menu,
-  window_type_utility,
-  window_type_splash,
-  window_type_dialog,
-  window_type_normal
-};
-
 class Rectangle : public XRectangle {
  public:
   void union_rect(const Rectangle& other) {
@@ -60,21 +48,28 @@ class Rectangle : public XRectangle {
 
 class Window {
  public:
+  enum WindowType {
+    window_type_unknown,
+    window_type_desktop,
+    window_type_dock,
+    window_type_toolbar,
+    window_type_menu,
+    window_type_utility,
+    window_type_splash,
+    window_type_dialog,
+    window_type_normal
+  };
+
+  static const char* StringFromType(WindowType type);
+
   Window();
   ~Window();
 
-  window_type type;
-
-  ::Window x_window;
-  Picture x_picture;
-  Damage x_damage;
-
-  ::Window x_transient_for;
-
-  struct Rectangle position;
-  struct Rectangle real_position;
+  Window(const Window& rhs) = delete;
+  Window& operator=(const Window& rhs) = delete;
 
   void get_hints();
+  void ReadProperties();
   void constrain_size();
 
   void init_composite();
@@ -85,9 +80,25 @@ class Window {
 
   bool override_redirect;
 
+  WindowType Type() const { return type; }
+
+  const std::vector<Atom> Properties() const { return properties_; }
+
+  // TODO(mortehu): Make these private
+
+  WindowType type;
+
+  ::Window x_window;
+  Picture x_picture;
+  Damage x_damage;
+
+  ::Window x_transient_for;
+
+  struct Rectangle position;
+  struct Rectangle real_position;
+
  private:
-  Window(const Window& rhs);
-  Window& operator=(const Window& rhs);
+  std::vector<Atom> properties_;
 };
 
 typedef std::vector<Window*> workspace;
@@ -121,11 +132,10 @@ class Screen {
 
 class Session {
  public:
-  Session();
-
   void ProcessXCreateWindowEvent(const XCreateWindowEvent& cwe);
 
   void SetDirty() { repaint_all_ = true; }
+  void SetDamaged() { repaint_some_ = true; }
   void Paint();
 
   Screen* find_screen_for_window(::Window x_window);
@@ -162,26 +172,35 @@ class Session {
     return internal_x_windows_.count(window) > 0;
   }
 
-  void ShowMenu() { showing_menu_ = true; }
-  void HideMenu() { showing_menu_ = false; }
+  void ShowMenu() {
+    showing_menu_ = true;
+    SetDirty();
+  }
+  void HideMenu() {
+    showing_menu_ = false;
+    SetDirty();
+  }
 
   int Top() { return desktop_geometry_.y; }
   int Right() { return desktop_geometry_.x + desktop_geometry_.width; }
   int Down() { return desktop_geometry_.y + desktop_geometry_.height; }
   int Left() { return desktop_geometry_.x; }
 
+  bool Dirty() const { return repaint_all_ || repaint_some_; }
+
  private:
   Rectangle desktop_geometry_;
 
   std::vector<Screen> screens_;
-  unsigned int active_screen_;
+  unsigned int active_screen_ = 0;
 
   std::vector<Window*> unpositioned_windows_;
 
   std::set< ::Window> internal_x_windows_;
 
-  bool showing_menu_;
-  bool repaint_all_;
+  bool showing_menu_ = false;
+  bool repaint_all_ = true;
+  bool repaint_some_ = false;
 };
 
 } /* namespace cantera_wm */

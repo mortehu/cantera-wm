@@ -1,6 +1,8 @@
 #ifndef XA_H_
 #define XA_H_ 1
 
+#include <string>
+
 #include <X11/Xdefs.h>
 
 namespace xa {
@@ -20,5 +22,11 @@ extern Atom wm_protocols;
 extern Atom wm_delete_window;
 
 }  // namespace xa
+
+namespace cantera_wm {
+
+std::string GetAtomName(Atom atom);
+
+}  // namespace cantera_wm
 
 #endif  // !XA_H_

@@ -9,9 +9,6 @@
 
 namespace cantera_wm {
 
-Session::Session()
-    : active_screen_(0), showing_menu_(false), repaint_all_(true) {}
-
 void Session::ProcessXCreateWindowEvent(const XCreateWindowEvent& cwe) {
   if (WindowIsInternal(cwe.window)) return;
 
@@ -41,12 +38,13 @@ void Session::Paint() {
     draw_menu =
         showing_menu_ || screen.workspaces[screen.active_workspace].empty();
 
-    if (draw_menu || current_session.repaint_all_)
+    if (draw_menu || current_session.repaint_all_) {
       XFixesSetPictureClipRegion(x_display, screen.x_buffer, 0, 0, None);
-    else {
+      fprintf(stderr, "Paint all\n");
+    } else {
+#if 0
       if (!screen.x_damage_region) continue;
 
-#if 0
       /* XXX: Buggy on dual monitors, except for the monitor at offset 0,0 */
 
       XFixesSetPictureClipRegion(x_display, screen.x_buffer, 0, 0,
@@ -63,7 +61,10 @@ void Session::Paint() {
                          screen.geometry.width, screen.geometry.height);
 
     for (auto& window : screen.ancillary_windows) {
-      if (!window->x_picture) continue;
+      if (!window->x_picture) {
+        fprintf(stderr, "Ancillary window does not have X picture\n");
+        continue;
+      }
 
       XRenderComposite(
           x_display, PictOpSrc, window->x_picture, None, screen.x_buffer, 0, 0,
@@ -73,13 +74,32 @@ void Session::Paint() {
     }
 
     for (auto& window : screen.workspaces[screen.active_workspace]) {
-      if (!window->x_picture) continue;
+      if (!window->x_picture) {
+        fprintf(stderr, "Window in active workspace does not have picture\n");
+        continue;
+      }
 
-      XRenderComposite(
-          x_display, PictOpSrc, window->x_picture, None, screen.x_buffer, 0, 0,
-          0, 0, window->real_position.x - screen.geometry.x,
-          window->real_position.y - screen.geometry.y,
-          window->real_position.width, window->real_position.height);
+      if (window->real_position.x >=
+          screen.geometry.x + screen.geometry.width) {
+        fprintf(stderr, "Window is to the right of the screen (%d > %d + %d)\n",
+                window->real_position.x, screen.geometry.x,
+                screen.geometry.width);
+      } else if (window->real_position.y >=
+                 screen.geometry.y + screen.geometry.height) {
+        fprintf(stderr, "Window is above the screen\n");
+      } else if (window->real_position.x + window->real_position.width <
+                 screen.geometry.x) {
+        fprintf(stderr, "Window is to the left of the screen\n");
+      } else if (window->real_position.y + window->real_position.height <
+                 screen.geometry.y) {
+        fprintf(stderr, "Window is below the screen\n");
+      } else {
+        XRenderComposite(
+            x_display, PictOpSrc, window->x_picture, None, screen.x_buffer, 0,
+            0, 0, 0, window->real_position.x - screen.geometry.x,
+            window->real_position.y - screen.geometry.y,
+            window->real_position.width, window->real_position.height);
+      }
     }
 
     if (draw_menu) menu_draw(screen);
@@ -95,6 +115,7 @@ void Session::Paint() {
   }
 
   current_session.repaint_all_ = false;
+  current_session.repaint_some_ = false;
 }
 
 cantera_wm::Screen* Session::find_screen_for_window(::Window x_window) {
@@ -150,16 +171,15 @@ void Session::remove_x_window(::Window x_window) {
 
   current_session.repaint_all_ = true;
 
-  auto predicate = [x_window](cantera_wm::Window* window)->bool {
-    return window->x_window == x_window;
-  };
+  auto predicate = [x_window](cantera_wm::Window* window)
+                       -> bool { return window->x_window == x_window; };
 
   auto i = std::find_if(unpositioned_windows_.begin(),
                         unpositioned_windows_.end(), predicate);
 
   if (i != unpositioned_windows_.end()) {
     fprintf(stderr, " -> It was unpositioned\n");
-    delete* i;
+    delete *i;
 
     unpositioned_windows_.erase(i);
 
@@ -174,7 +194,7 @@ void Session::remove_x_window(::Window x_window) {
 
     if (i != screen.ancillary_windows.end()) {
       fprintf(stderr, " -> It was an ancillary window\n");
-      delete* i;
+      delete *i;
 
       screen.ancillary_windows.erase(i);
 
@@ -188,7 +208,7 @@ void Session::remove_x_window(::Window x_window) {
 
       if (i != workspace.end()) {
         fprintf(stderr, " -> It was in a workspace\n");
-        delete* i;
+        delete *i;
 
         workspace.erase(i);
 
@@ -200,8 +220,8 @@ void Session::remove_x_window(::Window x_window) {
               navstack.end());
 
           if (screen.active_workspace == workspace_index && !navstack.empty()) {
-            current_session.screens_[screen_index]
-                .update_focus(navstack.back(), CurrentTime);
+            current_session.screens_[screen_index].update_focus(navstack.back(),
+                                                                CurrentTime);
           }
         }
 
@@ -219,7 +239,7 @@ void Session::move_window(cantera_wm::Window* w, cantera_wm::Screen* scr,
                           workspace* ws) {
   /* XXX: Eliminate code duplication from remove_x_window */
 
-  auto predicate = [w](cantera_wm::Window* arg)->bool { return w == arg; };
+  auto predicate = [w](cantera_wm::Window* arg) -> bool { return w == arg; };
 
   auto i = std::find_if(unpositioned_windows_.begin(),
                         unpositioned_windows_.end(), predicate);

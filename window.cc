@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 
 #include <err.h>
 #include <X11/Xatom.h>
@@ -17,6 +18,30 @@ int x_error_discarder(Display* display, XErrorEvent* error) { return 0; }
 }  // namespace
 
 namespace cantera_wm {
+
+const char* Window::StringFromType(WindowType type) {
+  switch (type) {
+    case window_type_desktop:
+      return "DESKTOP";
+    case window_type_dock:
+      return "DOCK";
+    case window_type_toolbar:
+      return "TOOLBAR";
+    case window_type_menu:
+      return "MENU";
+    case window_type_utility:
+      return "UTILITY";
+    case window_type_splash:
+      return "SPLASH";
+    case window_type_dialog:
+      return "DIALOG";
+    case window_type_normal:
+      return "NORMAL";
+    default:
+    case window_type_unknown:
+      return "UNKNOWN";
+  }
+}
 
 Window::Window() {
   memset(this, 0, sizeof(*this));
@@ -74,6 +99,13 @@ void Window::get_hints() {
   if (x_transient_for && type == window_type_normal) type = window_type_dialog;
 }
 
+void Window::ReadProperties() {
+  int num_properties = 0;
+  std::unique_ptr<Atom[], decltype(&XFree)> properties(
+      XListProperties(x_display, x_window, &num_properties), XFree);
+  properties_.assign(properties.get(), properties.get() + num_properties);
+}
+
 void Window::constrain_size() {}
 
 void Window::init_composite() {
@@ -99,6 +131,15 @@ void Window::init_composite() {
 
     x_picture = XRenderCreatePicture(x_display, x_window, format,
                                      CPSubwindowMode, &picture_attributes);
+
+    XRenderColor black;
+    black.red = 0x0000;
+    black.green = 0x0000;
+    black.blue = 0x0000;
+    black.alpha = 0xffff;
+
+    XRenderFillRectangle(x_display, PictOpSrc, x_picture, &black, 0, 0,
+                         position.width, position.height);
   }
 
   x_damage = XDamageCreate(x_display, x_window, XDamageReportNonEmpty);
@@ -112,20 +153,17 @@ void Window::reset_composite() {
 
   if (x_damage) {
     XDamageDestroy(x_display, x_damage);
-
     x_damage = 0;
   }
 
   if (x_picture) {
     XRenderFreePicture(x_display, x_picture);
-
     x_picture = 0;
   }
 }
 
 void Window::show() {
   XWindowChanges wc;
-
   wc.x = position.x;
   wc.y = position.y;
   wc.width = position.width;

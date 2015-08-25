@@ -12,6 +12,7 @@
 #include <sysexits.h>
 #include <unistd.h>
 
+#include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xproto.h>
 
@@ -46,7 +47,7 @@ Session current_session;
 
 std::set<pid_t> children;
 
-void Screen::update_focus(unsigned int workspace_index, Time x_event_time) {
+void Screen::UpdateFocus(unsigned int workspace_index, Time x_event_time) {
   ::Window focus_window;
   bool hide_and_show;
 
@@ -54,10 +55,36 @@ void Screen::update_focus(unsigned int workspace_index, Time x_event_time) {
 
   focus_window = x_root_window;
 
-  for (cantera_wm::Window* window : workspaces[workspace_index]) {
+  std::vector<cantera_wm::Window*> focus_candidates;
+
+  for (auto window : workspaces[workspace_index]) {
     if (hide_and_show) window->show();
 
-    focus_window = window->x_window;
+    if (window->AcceptsInput()) focus_candidates.emplace_back(window);
+  }
+
+  if (focus_candidates.empty()) {
+    fprintf(stderr, "No focus candidate windows in workspace %u\n",
+            workspace_index);
+
+    for (auto window : workspaces[workspace_index]) {
+      fprintf(stderr, "  %s:", window->Description().c_str());
+
+      if (!window->AcceptsInput()) fprintf(stderr, " (doesn't accept input)");
+
+      fprintf(stderr, "\n");
+    }
+  } else {
+    if (focus_candidates.size() > 1) {
+      fprintf(stderr, "%zu focus candidate windows in workspace %u\n",
+              focus_candidates.size(), workspace_index);
+
+      for (const auto window : focus_candidates)
+        fprintf(stderr, "  %s: Type: %d\n", window->Description().c_str(),
+                static_cast<int>(window->Type()));
+    }
+
+    focus_window = focus_candidates.back()->x_window;
   }
 
   if (hide_and_show) {
@@ -66,7 +93,7 @@ void Screen::update_focus(unsigned int workspace_index, Time x_event_time) {
 
   active_workspace = workspace_index;
 
-  XSetInputFocus(x_display, focus_window, RevertToPointerRoot, x_event_time);
+  XSetInputFocus(x_display, focus_window, RevertToParent, x_event_time);
 }
 
 }  // namespace cantera_wm
@@ -104,13 +131,13 @@ int x_error_handler(Display* display, XErrorEvent* error) {
     errx(EXIT_FAILURE, "Another window manager is already running");
 
   if (error->error_code == BadWindow) {
-    fprintf(stderr, "Got BadWindow error for window %08lx\n",
+    fprintf(stderr, "Got BadWindow error for window 0x%lx\n",
             error->resourceid);
     current_session.remove_x_window(error->resourceid);
   } else if (error->error_code == x_damage_errorbase + BadDamage) {
-    fprintf(stderr, "BadDamage: %08lx\n", error->resourceid);
+    fprintf(stderr, "BadDamage: 0x%lx\n", error->resourceid);
   } else if (error->error_code == BadMatch) {
-    fprintf(stderr, "BadMatch: %08lx\n", error->resourceid);
+    fprintf(stderr, "BadMatch: 0x%lx\n", error->resourceid);
   } else {
     fprintf(stderr, "Error: %d\n", error->error_code);
   }
@@ -191,8 +218,9 @@ void x_connect() {
       XInternAtom(x_display, "_NET_WM_WINDOW_TYPE_DIALOG", False);
   xa::net_wm_window_type_normal =
       XInternAtom(x_display, "_NET_WM_WINDOW_TYPE_NORMAL", False);
-  xa::wm_protocols = XInternAtom(x_display, "WM_PROTOCOLS", False);
   xa::wm_delete_window = XInternAtom(x_display, "WM_DELETE_WINDOW", False);
+  xa::wm_state = XInternAtom(x_display, "WM_STATE", False);
+  xa::wm_protocols = XInternAtom(x_display, "WM_PROTOCOLS", False);
 
   if ((c = XSetLocaleModifiers("")) && *c) x_im = XOpenIM(x_display, 0, 0, 0);
 
@@ -312,7 +340,7 @@ void x_connect() {
 
     XFreePixmap(x_display, pixmap);
 
-    fprintf(stderr, "Screen has window %08lx has buffer %08lx\n",
+    fprintf(stderr, "Screen has window 0x%lx has buffer 0x%lx\n",
             screen->x_window, screen->x_buffer);
 
     /* Only the first screen window gets key events */
@@ -377,7 +405,7 @@ void HandleMapRequest(const XMapRequestEvent& xmaprequest) {
     return;
   }
 
-  w->get_hints();
+  w->GetHints();
   w->ReadProperties();
 
   fprintf(stderr, "Map window %08lx of type %s\n", xmaprequest.window,
@@ -450,16 +478,40 @@ void HandleMapRequest(const XMapRequestEvent& xmaprequest) {
 
   w->show();
 
+  static unsigned long kMappedState[2] = {NormalState, None};
+  XChangeProperty(x_display, w->x_window, xa::wm_state, xa::wm_state, 32,
+                  PropModeReplace,
+                  reinterpret_cast<unsigned char*>(kMappedState), 2);
+
   XMapWindow(x_display, w->x_window);
 
   if (give_focus) {
     /* XXX: Check with ICCCM what the other parameters should be */
-    XSetInputFocus(x_display, w->x_window, RevertToPointerRoot, CurrentTime);
+    XSetInputFocus(x_display, w->x_window, RevertToParent, CurrentTime);
   }
 }
 
 void ProcessEvent(XEvent& event) {
   switch (event.type) {
+    case PropertyNotify: {
+      auto w = current_session.find_x_window(event.xmap.window);
+      if (!w) break;
+
+      switch (event.xproperty.atom) {
+        case XA_WM_NAME: {
+          const auto old_name = w->Description();
+          w->GetName();
+          fprintf(stderr, "New name for %s: %s\n", old_name.c_str(),
+                  w->Description().c_str());
+        } break;
+
+        case XA_WM_HINTS:
+          fprintf(stderr, "New WM hints for %s\n", w->Description().c_str());
+          w->GetWMHints();
+          break;
+      }
+    } break;
+
     case KeyPress: {
       wchar_t text[32];
       Status status;
@@ -501,8 +553,8 @@ void ProcessEvent(XEvent& event) {
 
         if (super_pressed) new_active_workspace += 12;
 
-        current_session.ActiveScreen()->update_focus(new_active_workspace,
-                                                     event.xkey.time);
+        current_session.ActiveScreen()->UpdateFocus(new_active_workspace,
+                                                    event.xkey.time);
 
         scr = current_session.ActiveScreen();
         scr->navigation_stack.clear();
@@ -516,7 +568,7 @@ void ProcessEvent(XEvent& event) {
         new_screen = key_sym - XK_1;
 
         current_session.SetActiveScreen(new_screen);
-        current_session.ActiveScreen()->update_focus(
+        current_session.ActiveScreen()->UpdateFocus(
             current_session.ActiveScreen()->active_workspace, event.xkey.time);
 
         current_session.SetDirty();
@@ -550,8 +602,8 @@ void ProcessEvent(XEvent& event) {
               scr->navigation_stack.back() = new_workspace;
             scr->active_workspace = new_workspace;
           } else {
-            current_session.ActiveScreen()->update_focus(new_workspace,
-                                                         event.xkey.time);
+            current_session.ActiveScreen()->UpdateFocus(new_workspace,
+                                                        event.xkey.time);
 
             scr->navigation_stack.clear();
             scr->navigation_stack.push_back(new_workspace);
@@ -606,7 +658,7 @@ void ProcessEvent(XEvent& event) {
 
     case CreateNotify: {
       fprintf(stderr,
-              "Window created (%d, %d, %d, %d), parent %08lx (root = %08lx)\n",
+              "Window created (%d, %d, %d, %d), parent 0x%lx (root = 0x%lx)\n",
               event.xcreatewindow.x, event.xcreatewindow.y,
               event.xcreatewindow.width, event.xcreatewindow.height,
               event.xcreatewindow.parent, x_root_window);
@@ -635,7 +687,7 @@ void ProcessEvent(XEvent& event) {
       workspace* ws;
       cantera_wm::Window* w;
 
-      fprintf(stderr, "Window %08lx was unmapped\n",
+      fprintf(stderr, "Window 0x%lx was unmapped\n",
               destroy_event.xdestroywindow.window);
 
       /* Window is probably destroyed, so we check that first */

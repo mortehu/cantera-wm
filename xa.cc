@@ -20,8 +20,9 @@ Atom net_wm_window_type_splash;
 Atom net_wm_window_type_dialog;
 Atom net_wm_window_type_normal;
 
-Atom wm_protocols;
 Atom wm_delete_window;
+Atom wm_protocols;
+Atom wm_state;
 
 }  // namespace xa
 

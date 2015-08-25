@@ -37,6 +37,13 @@ extern Session current_session;
 
 class Rectangle : public XRectangle {
  public:
+  Rectangle() {
+    x = 0;
+    y = 0;
+    width = 0;
+    height = 0;
+  }
+
   void union_rect(const Rectangle& other) {
     if (x > other.x) x = other.x;
     if (y > other.y) y = other.y;
@@ -68,7 +75,8 @@ class Window {
   Window(const Window& rhs) = delete;
   Window& operator=(const Window& rhs) = delete;
 
-  void get_hints();
+  void GetWMHints();
+  void GetHints();
   void ReadProperties();
   void constrain_size();
 
@@ -78,27 +86,51 @@ class Window {
   void show();
   void hide();
 
-  bool override_redirect;
+  void GetName();
+
+  bool AcceptsInput() const { return accepts_input_; }
 
   WindowType Type() const { return type; }
 
   const std::vector<Atom> Properties() const { return properties_; }
 
+  std::string Description() const {
+    std::string result;
+
+    if (!name_.empty()) {
+      result += "'";
+      result += name_;
+      result += "' ";
+    }
+
+    char tmp[32];
+    sprintf(tmp, "(0x%lx)", x_window);
+    result += tmp;
+
+    return result;
+  }
+
   // TODO(mortehu): Make these private
 
-  WindowType type;
+  bool override_redirect = false;
 
-  ::Window x_window;
-  Picture x_picture;
-  Damage x_damage;
+  WindowType type = window_type_unknown;
 
-  ::Window x_transient_for;
+  ::Window x_window = 0;
+  Picture x_picture = 0;
+  Damage x_damage = 0;
+
+  ::Window x_transient_for = 0;
 
   struct Rectangle position;
   struct Rectangle real_position;
 
  private:
   std::vector<Atom> properties_;
+
+  std::string name_;
+
+  bool accepts_input_ = true;
 };
 
 typedef std::vector<Window*> workspace;
@@ -109,7 +141,7 @@ class Screen {
 
   void paint();
 
-  void update_focus(unsigned int workspace_index, Time x_event_time);
+  void UpdateFocus(unsigned int workspace_index, Time x_event_time);
 
   std::vector<Window*> ancillary_windows;
 

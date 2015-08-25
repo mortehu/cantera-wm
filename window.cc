@@ -43,15 +43,37 @@ const char* Window::StringFromType(WindowType type) {
   }
 }
 
-Window::Window() {
-  memset(this, 0, sizeof(*this));
-
-  type = window_type_unknown;
-}
+Window::Window() { type = window_type_unknown; }
 
 Window::~Window() {}
 
-void Window::get_hints() {
+void Window::GetName() {
+  name_.clear();
+
+  XTextProperty text_prop;
+  auto status = XGetWMName(x_display, x_window, &text_prop);
+  if (!status || !text_prop.value || text_prop.nitems < 1) return;
+
+  char** list;
+  int num;
+  status = Xutf8TextPropertyToTextList(x_display, &text_prop, &list, &num);
+  if (status < 0 || num < 1 || !*list) return;
+
+  name_ = list[0];
+
+  XFree(text_prop.value);
+  XFreeStringList(list);
+}
+
+void Window::GetWMHints() {
+  if (auto wm_hints = XGetWMHints(x_display, x_window)) {
+    if (wm_hints->flags & InputHint) accepts_input_ = wm_hints->input;
+
+    XFree(wm_hints);
+  }
+}
+
+void Window::GetHints() {
   if (type != window_type_unknown) return;
 
   XSync(x_display, False);

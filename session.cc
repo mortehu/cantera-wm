@@ -27,6 +27,11 @@ void Session::ProcessXCreateWindowEvent(const XCreateWindowEvent& cwe) {
     new_window->override_redirect = true;
   }
 
+  XSelectInput(x_display, cwe.window, PropertyChangeMask);
+
+  new_window->GetWMHints();
+  new_window->GetName();
+
   unpositioned_windows_.push_back(new_window);
 }
 
@@ -40,7 +45,6 @@ void Session::Paint() {
 
     if (draw_menu || current_session.repaint_all_) {
       XFixesSetPictureClipRegion(x_display, screen.x_buffer, 0, 0, None);
-      fprintf(stderr, "Paint all\n");
     } else {
 #if 0
       if (!screen.x_damage_region) continue;
@@ -220,8 +224,8 @@ void Session::remove_x_window(::Window x_window) {
               navstack.end());
 
           if (screen.active_workspace == workspace_index && !navstack.empty()) {
-            current_session.screens_[screen_index].update_focus(navstack.back(),
-                                                                CurrentTime);
+            current_session.screens_[screen_index].UpdateFocus(navstack.back(),
+                                                               CurrentTime);
           }
         }
 

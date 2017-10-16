@@ -474,6 +474,13 @@ void HandleMapRequest(const XMapRequestEvent& xmaprequest) {
     default:
       fprintf(stderr, "Unhandled type of window: %s\n",
               cantera_wm::Window::StringFromType(w->Type()));
+    case cantera_wm::Window::window_type_dialog:
+      w->position.width = std::min(w->position.width, scr->geometry.width);
+      w->position.height = std::min(w->position.height, scr->geometry.height);
+      w->position.x =
+          scr->geometry.x + scr->geometry.width / 2 - w->position.width / 2;
+      w->position.y =
+          scr->geometry.y + scr->geometry.height / 2 - w->position.height / 2;
   }
 
   w->show();

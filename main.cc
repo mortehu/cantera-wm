@@ -252,6 +252,10 @@ void x_connect() {
     xinerama_screens = XineramaQueryScreens(x_display, &screen_count);
     assert(screen_count >= 1);
 
+    std::sort(
+        &xinerama_screens[0], &xinerama_screens[screen_count],
+        [](const auto& lhs, const auto& rhs) { return lhs.x_org < rhs.x_org; });
+
     for (i = 0; i < screen_count; ++i) {
       cantera_wm::Screen new_screen;
       new_screen.geometry.x = xinerama_screens[i].x_org;

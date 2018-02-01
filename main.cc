@@ -849,7 +849,12 @@ int main(int argc, char** argv) {
 
     switch (static_cast<Option>(i)) {
       case kOptionEventLog:
-        event_log.reset(fopen(optarg, "w"));
+        {
+          int fd = open(optarg, O_APPEND | O_CREAT | O_CLOEXEC, 0600);
+          if (fd == -1)
+            err(EXIT_FAILURE, "Failed to open '%s' for writing", optarg);
+          event_log.reset(fdopen(fd, "a"));
+        }
         break;
     }
   }

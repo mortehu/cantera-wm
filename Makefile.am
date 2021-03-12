@@ -3,7 +3,7 @@ noinst_PROGRAMS = focus-debug
 
 ACLOCAL_AMFLAGS = -I m4
 
-AM_CXXFLAGS = -Wall -g $(PACKAGES_CFLAGS)
+AM_CXXFLAGS = -std=c++14 -Wall -g $(PACKAGES_CFLAGS)
 
 cantera_wm_SOURCES = \
   arena.c arena.h \

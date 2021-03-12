@@ -5,8 +5,10 @@
 #include <set>
 
 #include <err.h>
+#include <fcntl.h>
 #include <getopt.h>
 #include <signal.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sysexits.h>
@@ -807,17 +809,29 @@ void x_process_events() {
       XEvent event;
       XNextEvent(x_display, &event);
 
-      if (event_log) {
+      timeval start;
+      gettimeofday(&start, nullptr);
+
+      if (!XFilterEvent(&event, event.xany.window)) ProcessEvent(event);
+
+      timeval end;
+      gettimeofday(&end, nullptr);
+
+      timeval diff;
+      timersub(&end, &start, &diff);
+
+      if (event_log || diff.tv_sec > 1 || diff.tv_usec > 100000) {
+        FILE* output = event_log ? event_log.get() : stderr;
+
+        fprintf(output, "%ld.%06lu %ld.%06lu", start.tv_sec, start.tv_usec, diff.tv_sec, diff.tv_usec);
         auto event_uc = reinterpret_cast<unsigned char*>(&event);
         for (size_t i = 0; i < sizeof(event); ++i) {
-          if (i) fputc(' ', event_log.get());
-          fprintf(event_log.get(), "%02x", event_uc[i]);
+          fputc(' ', output);
+          fprintf(output, "%02x", event_uc[i]);
         }
-        fprintf(event_log.get(), "\n");
-        fflush(event_log.get());
+        fprintf(output, "\n");
+        fflush(output);
       }
-
-      if (!XFilterEvent(&event, event.xkey.window)) ProcessEvent(event);
     }
 
     current_session.Paint();
@@ -850,7 +864,7 @@ int main(int argc, char** argv) {
     switch (static_cast<Option>(i)) {
       case kOptionEventLog:
         {
-          int fd = open(optarg, O_APPEND | O_CREAT | O_CLOEXEC, 0600);
+          int fd = open(optarg, O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0600);
           if (fd == -1)
             err(EXIT_FAILURE, "Failed to open '%s' for writing", optarg);
           event_log.reset(fdopen(fd, "a"));

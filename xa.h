@@ -7,6 +7,8 @@
 
 namespace xa {
 
+extern Atom net_active_window;
+
 extern Atom net_wm_window_type;
 
 extern Atom net_wm_window_type_desktop;

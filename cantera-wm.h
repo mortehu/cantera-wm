@@ -11,6 +11,7 @@
 
 #include <memory>
 #include <set>
+#include <string>
 #include <vector>
 
 namespace cantera_wm {

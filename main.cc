@@ -96,6 +96,12 @@ void Screen::UpdateFocus(unsigned int workspace_index, Time x_event_time) {
   active_workspace = workspace_index;
 
   XSetInputFocus(x_display, focus_window, RevertToParent, x_event_time);
+
+  // Set the _NET_ACTIVE_WINDOW property on the root window.
+  XChangeProperty(x_display, x_root_window, xa::net_active_window, XA_WINDOW,
+                  32, PropModeReplace, reinterpret_cast<unsigned char*>(
+                                           &focus_window),
+                  1);
 }
 
 }  // namespace cantera_wm
@@ -203,6 +209,7 @@ void x_connect() {
       XGetVisualInfo(x_display, VisualNoMask, NULL, &x_visual_info_count);
   x_root_window = RootWindow(x_display, x_screen_index);
 
+  xa::net_active_window = XInternAtom(x_display, "_NET_ACTIVE_WINDOW", False);
   xa::net_wm_window_type = XInternAtom(x_display, "_NET_WM_WINDOW_TYPE", False);
   xa::net_wm_window_type_desktop =
       XInternAtom(x_display, "_NET_WM_WINDOW_TYPE_DESKTOP", False);

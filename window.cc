@@ -7,6 +7,8 @@
 #include <memory>
 
 #include <err.h>
+#include <X11/extensions/shape.h>
+#include <X11/extensions/Xfixes.h>
 #include <X11/Xatom.h>
 
 #include "xa.h"
@@ -185,21 +187,26 @@ void Window::reset_composite() {
 }
 
 void Window::show() {
-  XWindowChanges wc;
-  wc.x = position.x;
-  wc.y = position.y;
-  wc.width = position.width;
-  wc.height = position.height;
+  /* Restore the normal input region first … */
+  XFixesSetWindowShapeRegion(x_display, x_window,
+                             ShapeInput, 0, 0, None);
 
-  /* XXX: Quench this if the position is not dirty */
-  XConfigureWindow(x_display, x_window, CWX | CWY | CWWidth | CWHeight, &wc);
+  /* … then put it back where it belongs. */
+  XMoveResizeWindow(x_display, x_window,
+                    position.x, position.y,
+                    position.width, position.height);
 }
 
 void Window::hide() {
-  XWindowChanges wc;
-  wc.x = current_session.Right();
+  /* Make the window non‑interactive but keep it mapped so the
+     compositor still receives damaged pixels for the thumbnail.      */
+  XserverRegion empty = XFixesCreateRegion(x_display, nullptr, 0);
+  XFixesSetWindowShapeRegion(x_display, x_window,
+                             ShapeInput, 0, 0, empty);
+  XFixesDestroyRegion(x_display, empty);
 
-  XConfigureWindow(x_display, x_window, CWX, &wc);
+  /* Move it off‑screen as before (purely cosmetic now).              */
+  XMoveWindow(x_display, x_window, current_session.Right(), position.y);
 }
 
 }  // namespace cantera_wm

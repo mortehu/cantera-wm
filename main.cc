@@ -426,15 +426,12 @@ void HandleMapRequest(const XMapRequestEvent& xmaprequest) {
 
   if (!scr) scr = current_session.ActiveScreen();
 
-  bool give_focus = true;
-
   switch (w->Type()) {
     case cantera_wm::Window::window_type_desktop:
       current_session.move_window(w, scr, NULL);
 
       w->position = scr->geometry;
 
-      give_focus = false;
       break;
 
     default: {
@@ -462,7 +459,7 @@ void HandleMapRequest(const XMapRequestEvent& xmaprequest) {
           }
         }
 
-        scr->active_workspace = workspace;
+        scr->UpdateFocus(workspace, CurrentTime);
 
         auto& navstack = scr->navigation_stack;
 
@@ -504,11 +501,6 @@ void HandleMapRequest(const XMapRequestEvent& xmaprequest) {
                   reinterpret_cast<unsigned char*>(kMappedState), 2);
 
   XMapWindow(x_display, w->x_window);
-
-  if (give_focus) {
-    /* XXX: Check with ICCCM what the other parameters should be */
-    XSetInputFocus(x_display, w->x_window, RevertToParent, CurrentTime);
-  }
 }
 
 void ProcessEvent(XEvent& event) {
